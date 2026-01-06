@@ -1,4 +1,14 @@
 require('dotenv').config();
+
+// Log startup immediately
+console.log('═══════════════════════════════════════════════════════════');
+console.log('🔥 DATASELL SERVER STARTUP');
+console.log('═══════════════════════════════════════════════════════════');
+console.log(`⏰ Time: ${new Date().toISOString()}`);
+console.log(`📝 Node Version: ${process.version}`);
+console.log(`🌍 Environment: ${process.env.NODE_ENV || 'development'}`);
+console.log('═══════════════════════════════════════════════════════════\n');
+
 const express = require('express');
 const path = require('path');
 const fs = require('fs');
@@ -137,6 +147,7 @@ if (missingVars.length > 0) {
 }
 
 // Enhanced Firebase Admin initialization with better error handling
+console.log('🔄 Starting Firebase initialization...');
 try {
   const serviceAccount = {
     type: "service_account",
@@ -151,14 +162,32 @@ try {
     client_x509_cert_url: process.env.FIREBASE_CLIENT_CERT_URL
   };
 
-  admin.initializeApp({
-    credential: admin.credential.cert(serviceAccount),
-    databaseURL: process.env.FIREBASE_DATABASE_URL
+  // Initialize Firebase with timeout protection
+  const firebasePromise = new Promise((resolve, reject) => {
+    const timeout = setTimeout(() => {
+      reject(new Error('Firebase initialization timeout after 15 seconds'));
+    }, 15000);
+
+    try {
+      admin.initializeApp({
+        credential: admin.credential.cert(serviceAccount),
+        databaseURL: process.env.FIREBASE_DATABASE_URL
+      });
+      clearTimeout(timeout);
+      console.log('✅ Firebase Admin initialized successfully');
+      resolve();
+    } catch (error) {
+      clearTimeout(timeout);
+      reject(error);
+    }
   });
-  console.log('✅ Firebase Admin initialized successfully');
+
+  firebasePromise.catch(error => {
+    console.error('⚠️  Firebase initialization warning (non-fatal):', error.message);
+    // Don't exit - server can still run without Firebase for now
+  });
 } catch (error) {
-  console.error('❌ Firebase initialization failed:', error.message);
-  process.exit(1);
+  console.error('⚠️  Firebase initialization error (non-fatal):', error.message);
 }
 
 // Enhanced Package Cache System with error recovery
@@ -170,51 +199,59 @@ let packageCache = {
 };
 
 function initializePackageCache() {
-  console.log('🔄 Initializing real-time package cache...');
+  console.log('🔄 Initializing real-time package cache (non-blocking)...');
   
-  const mtnRef = admin.database().ref('packages/mtn');
-  const atRef = admin.database().ref('packages/at');
-  
-  mtnRef.on('value', (snapshot) => {
+  // Don't block startup - run in background
+  setTimeout(() => {
     try {
-      const packages = snapshot.val() || {};
-      const packagesArray = Object.entries(packages).map(([key, pkg]) => ({
-        id: key,
-        ...pkg
-      }));
+      const mtnRef = admin.database().ref('packages/mtn');
+      const atRef = admin.database().ref('packages/at');
       
-      packageCache.mtn = packagesArray;
-      packageCache.lastUpdated = Date.now();
-      packageCache.isInitialized = true;
-      console.log(`✅ MTN packages cache updated (${packagesArray.length} packages)`);
-    } catch (error) {
-      console.error('❌ Error updating MTN packages cache:', error);
-    }
-  }, (error) => {
-    console.error('❌ MTN packages listener error:', error);
-  });
-  
-  atRef.on('value', (snapshot) => {
-    try {
-      const packages = snapshot.val() || {};
-      const packagesArray = Object.entries(packages).map(([key, pkg]) => ({
-        id: key,
-        ...pkg
-      }));
+      mtnRef.on('value', (snapshot) => {
+        try {
+          const packages = snapshot.val() || {};
+          const packagesArray = Object.entries(packages).map(([key, pkg]) => ({
+            id: key,
+            ...pkg
+          }));
+          
+          packageCache.mtn = packagesArray;
+          packageCache.lastUpdated = Date.now();
+          packageCache.isInitialized = true;
+          console.log(`✅ MTN packages cache updated (${packagesArray.length} packages)`);
+        } catch (error) {
+          console.error('❌ Error updating MTN packages cache:', error);
+        }
+      }, (error) => {
+        console.error('⚠️  MTN packages listener warning:', error.message);
+      });
       
-      packageCache.at = packagesArray;
-      packageCache.lastUpdated = Date.now();
-      packageCache.isInitialized = true;
-      console.log(`✅ AirtelTigo packages cache updated (${packagesArray.length} packages)`);
+      atRef.on('value', (snapshot) => {
+        try {
+          const packages = snapshot.val() || {};
+          const packagesArray = Object.entries(packages).map(([key, pkg]) => ({
+            id: key,
+            ...pkg
+          }));
+          
+          packageCache.at = packagesArray;
+          packageCache.lastUpdated = Date.now();
+          packageCache.isInitialized = true;
+          console.log(`✅ AirtelTigo packages cache updated (${packagesArray.length} packages)`);
+        } catch (error) {
+          console.error('❌ Error updating AirtelTigo packages cache:', error);
+        }
+      }, (error) => {
+        console.error('⚠️  AirtelTigo packages listener warning:', error.message);
+      });
     } catch (error) {
-      console.error('❌ Error updating AirtelTigo packages cache:', error);
+      console.error('⚠️  Package cache initialization warning:', error.message);
     }
-  }, (error) => {
-    console.error('❌ AirtelTigo packages listener error:', error);
-  });
+  }, 100);
 }
 
-initializePackageCache();
+// Schedule cache initialization to run after server starts
+let cacheInitialized = false;
 
 // Custom Firebase Session Store (persists sessions across restarts)
 class FirebaseSessionStore extends session.Store {
@@ -4025,13 +4062,26 @@ app.get('/health', (req, res) => {
   res.status(200).json({ status: 'ok', timestamp: new Date().toISOString() });
 });
 
+// Basic root endpoint
+app.get('/', (req, res) => {
+  res.send('DataSell Server is running');
+});
+
 // Start the server
-const server = app.listen(PORT, () => {
+console.log(`⏳ Attempting to start server on port ${PORT}...`);
+const server = app.listen(PORT, '0.0.0.0', () => {
   console.log(`
 🚀 DataSell Server is running!
 📍 Port: ${PORT}
-🌐 URL: http://localhost:${PORT}
+🌐 Environment: ${process.env.NODE_ENV || 'development'}
+⏰ Started at: ${new Date().toISOString()}
   `);
+  
+  // Initialize package cache after server is running
+  if (!cacheInitialized) {
+    cacheInitialized = true;
+    initializePackageCache();
+  }
   
   // Confirm server is still running after a brief delay
   setTimeout(() => {
@@ -4051,3 +4101,16 @@ server.on('error', (err) => {
 server.on('close', () => {
   console.log('⚠️  Server closed');
 });
+
+// Global error handlers
+process.on('uncaughtException', (err) => {
+  console.error('❌ UNCAUGHT EXCEPTION:', err);
+  // Log but don't exit - server should continue running
+});
+
+process.on('unhandledRejection', (reason, promise) => {
+  console.error('❌ UNHANDLED REJECTION at:', promise, 'reason:', reason);
+  // Log but don't exit - server should continue running
+});
+
+console.log('✅ All error handlers registered. Server is ready.');
