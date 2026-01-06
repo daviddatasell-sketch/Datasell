@@ -401,6 +401,54 @@ body {
     }
 }
 
+/* Order Notice Section */
+.order-notice-section {
+    margin-top: 1rem;
+    margin-bottom: 1rem;
+    padding: 0 0.75rem;
+}
+
+.notice-card {
+    background: linear-gradient(135deg, #fff3cd 0%, #ffe8a6 100%);
+    border: 2px solid #ffc107;
+    border-radius: 8px;
+    padding: 1rem;
+    text-align: center;
+}
+
+.notice-header {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.75rem;
+    margin-bottom: 0.5rem;
+}
+
+.notice-header i {
+    font-size: 1.5rem;
+    color: #ff9800;
+}
+
+.notice-header h3 {
+    margin: 0;
+    font-size: 1rem;
+    font-weight: 700;
+    color: #d97706;
+    letter-spacing: 0.5px;
+}
+
+.notice-text {
+    margin: 0;
+    font-size: 0.95rem;
+    color: #333;
+    font-weight: 500;
+}
+
+.notice-text strong {
+    color: #d97706;
+    font-size: 1.05rem;
+}
+
 /* Mobile Styles */
 @media (max-width: 576px) {
     .container {
@@ -715,6 +763,17 @@ body {
                         </div>
                         <p class="empty-text">No recent purchases</p>
                     </div>
+                </div>
+            </div>
+
+            <!-- Order Processing Notice -->
+            <div class="order-notice-section">
+                <div class="notice-card">
+                    <div class="notice-header">
+                        <i class="fas fa-clock"></i>
+                        <h3>ORDERS ARE NOT INSTANT</h3>
+                    </div>
+                    <p class="notice-text">It takes <strong>(5-45 minutes)</strong> to receive your order</p>
                 </div>
             </div>
         </div>
