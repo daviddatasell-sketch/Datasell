@@ -33,7 +33,26 @@ const backupData = JSON.parse(fs.readFileSync(backupPath, 'utf8'));
 const usersFromBackup = backupData.exportedCollections.users || {};
 
 async function generateTemporaryPassword() {
-  return Math.random().toString(36).slice(-12).toUpperCase();
+  // SMS-friendly: Only alphanumeric (no special chars, no emojis)
+  // Format: 3 uppercase + 3 numbers + 6 lowercase = 12 chars total
+  const uppercase = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
+  const numbers = '0123456789';
+  const lowercase = 'abcdefghijklmnopqrstuvwxyz';
+  
+  let password = '';
+  // Add 3 uppercase
+  for (let i = 0; i < 3; i++) {
+    password += uppercase.charAt(Math.floor(Math.random() * uppercase.length));
+  }
+  // Add 3 numbers
+  for (let i = 0; i < 3; i++) {
+    password += numbers.charAt(Math.floor(Math.random() * numbers.length));
+  }
+  // Add 6 lowercase
+  for (let i = 0; i < 6; i++) {
+    password += lowercase.charAt(Math.floor(Math.random() * lowercase.length));
+  }
+  return password;
 }
 
 async function importUsers() {

@@ -33,10 +33,24 @@ const db = admin.database();
 
 // Helper function to generate random password
 function generatePassword() {
-  const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789!@#$%^&*';
+  // SMS-friendly: Only alphanumeric (no special chars, no emojis)
+  // Format: 3 uppercase + 3 numbers + 6 lowercase = 12 chars total
+  const uppercase = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
+  const numbers = '0123456789';
+  const lowercase = 'abcdefghijklmnopqrstuvwxyz';
+  
   let password = '';
-  for (let i = 0; i < 12; i++) {
-    password += chars.charAt(Math.floor(Math.random() * chars.length));
+  // Add 3 uppercase
+  for (let i = 0; i < 3; i++) {
+    password += uppercase.charAt(Math.floor(Math.random() * uppercase.length));
+  }
+  // Add 3 numbers
+  for (let i = 0; i < 3; i++) {
+    password += numbers.charAt(Math.floor(Math.random() * numbers.length));
+  }
+  // Add 6 lowercase
+  for (let i = 0; i < 6; i++) {
+    password += lowercase.charAt(Math.floor(Math.random() * lowercase.length));
   }
   return password;
 }
