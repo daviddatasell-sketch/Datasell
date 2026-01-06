@@ -8,6 +8,8 @@ const session = require('express-session');
 const bcrypt = require('bcryptjs');
 const cors = require('cors');
 const nodemailer = require('nodemailer');
+const { validatePhoneSignup, validatePhoneOrder, logBlockedPhoneAttempt } = require('./phone-blocking-system');
+const { validateGhanianPhone, toInternationalFormat } = require('./ghana-phone-validator');
 // rate limiting removed per request
 
 const app = express();
@@ -633,7 +635,7 @@ app.post('/api/signup', async (req, res) => {
       });
     }
 
-    // Email validation - NEW
+    // Email validation
     const emailValidation = validateEmail(email.trim());
     if (!emailValidation.valid) {
       return res.status(400).json({ 
@@ -650,60 +652,116 @@ app.post('/api/signup', async (req, res) => {
       });
     }
 
-    if (!/^\d{10}$/.test(phone)) {
+    // Phone validation
+    const phoneValidationResult = validateGhanianPhone(phone);
+    if (!phoneValidationResult.valid) {
+      console.warn(`⚠️ Invalid phone attempt: ${phone} - ${phoneValidationResult.error}`);
       return res.status(400).json({ 
         success: false, 
-        error: 'Phone number must be 10 digits' 
+        error: phoneValidationResult.error 
       });
     }
 
-    const userRecord = await admin.auth().createUser({
-      email,
-      password,
-      displayName: `${firstName} ${lastName}`,
-      phoneNumber: `+233${phone.substring(1)}` // Format for Ghana
-    });
+    const normalizedPhone = phoneValidationResult.normalized;
 
-    // Create user in database
-    await admin.database().ref('users/' + userRecord.uid).set({
+    console.log(`✅ Valid phone: ${normalizedPhone}`);
+
+    // Check if phone is blocked
+    const phoneBlacklistCheck = await validatePhoneSignup(normalizedPhone);
+    if (!phoneBlacklistCheck.valid) {
+      console.warn(`⚠️ Blocked phone signup attempt: ${normalizedPhone}`);
+      await logBlockedPhoneAttempt(normalizedPhone, 'signup', null, { 
+        email: email,
+        ip: req.ip,
+        userAgent: req.get('user-agent')
+      });
+      return res.status(403).json({ 
+        success: false, 
+        error: phoneBlacklistCheck.error 
+      });
+    }
+
+    // Check if email already exists
+    const usersSnapshot = await admin.database().ref('users').once('value');
+    const existingUsers = usersSnapshot.val() || {};
+    
+    for (const [uid, userData] of Object.entries(existingUsers)) {
+      if (userData.email && userData.email.toLowerCase() === email.toLowerCase()) {
+        return res.status(400).json({ 
+          success: false, 
+          error: 'Email already exists' 
+        });
+      }
+    }
+
+    let uid = null;
+    let authMethod = 'database'; // Track which auth method was used
+
+    // OPTION 1 & 3: Try Firebase Auth first (if enabled)
+    try {
+      console.log('🔐 Attempting Firebase Auth signup...');
+      const userRecord = await admin.auth().createUser({
+        email: email.toLowerCase().trim(),
+        password,
+        displayName: `${firstName} ${lastName}`
+      });
+      uid = userRecord.uid;
+      authMethod = 'firebase';
+      console.log(`✅ User created in Firebase Auth: ${uid}`);
+    } catch (firebaseError) {
+      console.warn(`⚠️ Firebase Auth unavailable: ${firebaseError.message}`);
+      console.log('📦 Falling back to database-based authentication...');
+      
+      // OPTION 2: Fall back to database-based auth
+      uid = 'user_' + require('crypto').randomBytes(8).toString('hex');
+      authMethod = 'database';
+      console.log(`✅ Using database-based auth with UID: ${uid}`);
+    }
+
+    // Hash password for database backup (always, regardless of auth method)
+    const passwordHash = await bcrypt.hash(password, 10);
+
+    // Create/Update user in database
+    await admin.database().ref('users/' + uid).set({
+      uid: uid,
       firstName: firstName.trim(),
       lastName: lastName.trim(),
       email: email.toLowerCase().trim(),
-      phone: phone.trim(),
+      phone: normalizedPhone,
+      passwordHash: passwordHash, // For database auth fallback
       walletBalance: 0,
       createdAt: new Date().toISOString(),
       isAdmin: email === process.env.ADMIN_EMAIL,
       pricingGroup: 'regular',
       suspended: false,
-      lastLogin: null
+      lastLogin: null,
+      authMethod: authMethod // Track which auth system is used
     });
 
     // Log registration
     await admin.database().ref('userLogs').push().set({
-      userId: userRecord.uid,
+      userId: uid,
       action: 'registration',
+      email: email.toLowerCase(),
+      phone: normalizedPhone,
+      authMethod: authMethod,
       timestamp: new Date().toISOString(),
       ip: req.ip
     });
 
+    console.log(`✅ User registered successfully: ${email} (${uid}) via ${authMethod}`);
+
     res.json({ 
       success: true, 
-      userId: userRecord.uid,
-      message: 'Account created successfully'
+      userId: uid,
+      authMethod: authMethod,
+      message: 'Account created successfully. You can now log in with your email and password.'
     });
   } catch (error) {
     console.error('Signup error:', error);
-    
-    if (error.code === 'auth/email-already-exists') {
-      return res.status(400).json({ 
-        success: false, 
-        error: 'Email already exists' 
-      });
-    }
-    
-    res.status(400).json({ 
+    res.status(500).json({ 
       success: false, 
-      error: error.message 
+      error: 'Failed to create account: ' + error.message 
     });
   }
 });
@@ -740,19 +798,30 @@ app.post('/api/login', async (req, res) => {
       console.log('🔑 Admin login detected for:', email);
       // Admin credentials match
       console.log('✅ Admin credentials match');
-      let userRecord;
-      try {
-        userRecord = await admin.auth().getUserByEmail(email);
-      } catch (error) {
-        console.log('📝 Creating new admin user');
-        // Create admin user if doesn't exist
-        userRecord = await admin.auth().createUser({
-          email,
-          password: process.env.ADMIN_PASSWORD,
-          displayName: 'Administrator'
-        });
-
-        await admin.database().ref('users/' + userRecord.uid).set({
+      
+      // For admin, use database-based auth (Firebase Auth not available)
+      // Look for existing admin user record by email
+      const usersSnapshot = await admin.database().ref('users').once('value');
+      const users = usersSnapshot.val() || {};
+      let adminUser = null;
+      let adminUid = null;
+      
+      // Search for existing user with admin email
+      for (const [uid, userData] of Object.entries(users)) {
+        if (userData.email && userData.email.toLowerCase() === email.toLowerCase()) {
+          adminUser = userData;
+          adminUid = uid;
+          console.log('✅ Found existing admin user record with UID:', adminUid);
+          break;
+        }
+      }
+      
+      // If no existing admin user, create one (but with a consistent UID)
+      if (!adminUid) {
+        adminUid = 'admin-' + email.replace('@', '-').replace(/[^a-z0-9-]/gi, '');
+        console.log('📝 Creating new admin user record with UID:', adminUid);
+        adminUser = {
+          uid: adminUid,
           firstName: 'Admin',
           lastName: 'User',
           email,
@@ -761,15 +830,21 @@ app.post('/api/login', async (req, res) => {
           createdAt: new Date().toISOString(),
           isAdmin: true,
           pricingGroup: 'admin',
-          suspended: false
-        });
+          suspended: false,
+          lastLogin: new Date().toISOString()
+        };
+        
+        // Save new admin user
+        await admin.database().ref('users/' + adminUid).set(adminUser);
+      } else {
+        // Update existing admin user's last login
+        await admin.database().ref('users/' + adminUid + '/lastLogin').set(new Date().toISOString());
       }
-
-      // Set user data directly (no regenerate - it breaks session ID sync)
+      
       req.session.user = {
-        uid: userRecord.uid,
-        email: userRecord.email,
-        displayName: userRecord.displayName,
+        uid: adminUid,
+        email,
+        displayName: adminUser?.displayName || adminUser?.firstName + ' ' + adminUser?.lastName || 'Administrator',
         isAdmin: true
       };
 
@@ -783,11 +858,6 @@ app.post('/api/login', async (req, res) => {
         // Ignore if session cookie cannot be modified
       }
 
-      // Update last login - do this in background
-      admin.database().ref('users/' + userRecord.uid).update({
-        lastLogin: new Date().toISOString()
-      }).catch(err => console.error('Failed to update lastLogin:', err));
-
       // Return response - express-session middleware will automatically save and set Set-Cookie
       console.log('📤 Sending admin login response with sessionID:', req.sessionID);
       return res.json({ 
@@ -799,46 +869,77 @@ app.post('/api/login', async (req, res) => {
       });
     }
 
-    // Enhanced Regular user login
+    // Enhanced Regular user login - Check database first
     console.log('👤 Regular user login attempt for:', email);
-    const signInResponse = await axios.post(
-      `https://identitytoolkit.googleapis.com/v1/accounts:signInWithPassword?key=${process.env.FIREBASE_API_KEY}`,
-      {
-        email,
-        password,
-        returnSecureToken: true
-      },
-      { timeout: 10000 }
-    );
-
-    const { localId, email: userEmail, displayName } = signInResponse.data;
-
-    const userSnapshot = await admin.database().ref('users/' + localId).once('value');
-    const userData = userSnapshot.val();
-
-    if (!userData) {
-      console.log('❌ User data not found in database');
-      return res.status(404).json({ 
+    
+    // First, try to find user by email in the database
+    const usersSnapshot = await admin.database().ref('users').once('value');
+    const allUsers = usersSnapshot.val() || {};
+    
+    let foundUser = null;
+    let foundUserId = null;
+    
+    // Search for user with matching email
+    for (const [uid, userData] of Object.entries(allUsers)) {
+      if (userData.email && userData.email.toLowerCase() === email.toLowerCase()) {
+        foundUser = userData;
+        foundUserId = uid;
+        console.log('✅ Found user in database:', uid);
+        break;
+      }
+    }
+    
+    if (!foundUser) {
+      console.log('❌ User not found in database:', email);
+      return res.status(401).json({ 
         success: false, 
-        error: 'User data not found' 
+        error: 'Invalid email or password' 
       });
     }
-
+    
     // Check if user is suspended
-    if (userData.suspended) {
+    if (foundUser.suspended) {
       console.log('⛔ User suspended:', email);
       return res.status(403).json({
         success: false,
         error: 'Account suspended. Please contact administrator.'
       });
     }
-
-    // Set user data directly (no regenerate - it breaks session ID sync)
+    
+    // Verify password - check if stored as hashed or plain
+    let passwordMatch = false;
+    
+    if (foundUser.passwordHash) {
+      // Compare with bcrypt hash
+      try {
+        passwordMatch = await bcrypt.compare(password, foundUser.passwordHash);
+        console.log('🔐 Password compared with hash:', passwordMatch);
+      } catch (e) {
+        console.error('❌ Bcrypt error:', e.message);
+        passwordMatch = false;
+      }
+    } else if (foundUser.password) {
+      // Fallback: plain text comparison (for legacy users)
+      passwordMatch = (foundUser.password === password);
+      console.log('⚠️ Plain text password match:', passwordMatch);
+    }
+    
+    if (!passwordMatch) {
+      console.log('❌ Password mismatch for user:', email);
+      return res.status(401).json({ 
+        success: false, 
+        error: 'Invalid email or password' 
+      });
+    }
+    
+    console.log('✅ Password verified for user:', email);
+    
+    // Set user session
     req.session.user = {
-      uid: localId,
-      email: userEmail,
-      displayName: displayName || `${userData.firstName} ${userData.lastName}`,
-      isAdmin: userData.isAdmin || false
+      uid: foundUserId,
+      email: foundUser.email,
+      displayName: foundUser.displayName || `${foundUser.firstName || ''} ${foundUser.lastName || ''}`.trim(),
+      isAdmin: foundUser.isAdmin || false
     };
 
     // Respect 'remember me' for regular user sessions
@@ -850,12 +951,12 @@ app.post('/api/login', async (req, res) => {
     }
 
     // Update last login - do this in background
-    admin.database().ref('users/' + localId).update({
+    admin.database().ref('users/' + foundUserId).update({
       lastLogin: new Date().toISOString()
     }).catch(err => console.error('Failed to update lastLogin:', err));
 
     // Log session info for debugging
-    console.log('✅ User login for', localId, 'sessionID:', req.sessionID, 'cookieMaxAge:', req.session.cookie.maxAge);
+    console.log('✅ User login for', foundUserId, 'sessionID:', req.sessionID, 'cookieMaxAge:', req.session.cookie.maxAge);
     console.log('🍪 Session data set:', { uid: req.session.user.uid, isAdmin: req.session.user.isAdmin, sessionID: req.sessionID });
     
     // Save session explicitly before returning response
@@ -1377,6 +1478,83 @@ app.get('/logout', (req, res) => {
   });
 });
 
+// Change Password Endpoint
+app.post('/api/change-password', requireAuth, async (req, res) => {
+  try {
+    const { currentPassword, newPassword } = req.body;
+    const userId = req.session.user.uid;
+    
+    // Validate inputs
+    if (!currentPassword || !newPassword) {
+      return res.status(400).json({
+        success: false,
+        error: 'Current password and new password are required'
+      });
+    }
+    
+    if (newPassword.length < 6) {
+      return res.status(400).json({
+        success: false,
+        error: 'New password must be at least 6 characters'
+      });
+    }
+    
+    // Get user from database
+    const userSnapshot = await admin.database().ref('users/' + userId).once('value');
+    const userData = userSnapshot.val();
+    
+    if (!userData) {
+      return res.status(404).json({
+        success: false,
+        error: 'User not found'
+      });
+    }
+    
+    // Verify current password
+    if (!userData.passwordHash) {
+      return res.status(400).json({
+        success: false,
+        error: 'No password set for this account'
+      });
+    }
+    
+    // Compare current password with stored hash
+    const passwordMatch = await bcrypt.compare(currentPassword, userData.passwordHash);
+    
+    if (!passwordMatch) {
+      console.log('❌ Wrong current password for user:', userId);
+      return res.status(401).json({
+        success: false,
+        error: 'Current password is incorrect'
+      });
+    }
+    
+    // Hash new password
+    const newPasswordHash = await bcrypt.hash(newPassword, 10);
+    
+    // Update password in database
+    await admin.database().ref('users/' + userId).update({
+      passwordHash: newPasswordHash,
+      passwordChangedAt: new Date().toISOString(),
+      requiresPasswordChange: false
+    });
+    
+    console.log('✅ Password changed successfully for user:', userId);
+    
+    res.json({
+      success: true,
+      message: 'Password changed successfully'
+    });
+    
+  } catch (error) {
+    console.error('Change password error:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to change password: ' + error.message
+    });
+  }
+});
+
 // ====================
 // ENHANCED WALLET & PAYMENT ROUTES
 // ====================
@@ -1478,8 +1656,9 @@ app.get('/api/wallet/transactions', requireAuth, async (req, res) => {
 app.get('/api/orders', requireAuth, async (req, res) => {
   try {
     const userId = req.session.user.uid;
+    const limit = parseInt(req.query.limit) || 20; // Default to 20 recent orders
     
-    console.log('📦 Fetching orders for user:', userId);
+    console.log('📦 Fetching orders for user:', userId, 'limit:', limit);
     
     // Try using orderByChild first (faster with index)
     try {
@@ -1492,28 +1671,29 @@ app.get('/api/orders', requireAuth, async (req, res) => {
       const transactions = transactionsSnapshot.val() || {};
 
       // Format transactions as orders
-      const orders = Object.entries(transactions).map(([id, transaction]) => ({
-        id,
-        packageName: transaction.packageName || 'Data Package',
-        network: transaction.network || 'unknown',
-        phoneNumber: transaction.phoneNumber || '',
-        amount: transaction.amount || 0,
-        volume: transaction.volume || '0MB',
-        status: transaction.status || 'processing',
-        reference: transaction.reference || '',
-        transactionId: transaction.transactionId || transaction.datamartTransactionId || transaction.hubnetTransactionId || '',
-        timestamp: transaction.timestamp || new Date().toISOString(),
-        reason: transaction.reason || ''
-      }));
-
-      // Sort by timestamp (newest first)
-      orders.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
+      const orders = Object.entries(transactions)
+        .map(([id, transaction]) => ({
+          id,
+          packageName: transaction.packageName || 'Data Package',
+          network: transaction.network || 'unknown',
+          phoneNumber: transaction.phoneNumber || '',
+          amount: transaction.amount || 0,
+          volume: transaction.volume || '0MB',
+          status: transaction.status || 'processing',
+          reference: transaction.reference || '',
+          transactionId: transaction.transactionId || transaction.datamartTransactionId || transaction.hubnetTransactionId || '',
+          timestamp: transaction.timestamp || new Date().toISOString(),
+          reason: transaction.reason || ''
+        }))
+        .sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp))
+        .slice(0, limit); // Limit to most recent N orders
 
       console.log(`✅ Found ${orders.length} orders using orderByChild`);
 
       res.json({
         success: true,
-        orders: orders
+        orders: orders,
+        count: orders.length
       });
     } catch (indexError) {
       // Fallback: read all transactions and filter client-side
@@ -1521,6 +1701,7 @@ app.get('/api/orders', requireAuth, async (req, res) => {
       
       const allTransactionsSnapshot = await admin.database()
         .ref('transactions')
+        .limitToLast(500) // Limit to last 500 transactions to avoid loading everything
         .once('value');
 
       const allTransactions = allTransactionsSnapshot.val() || {};
@@ -1540,16 +1721,16 @@ app.get('/api/orders', requireAuth, async (req, res) => {
           transactionId: transaction.transactionId || transaction.datamartTransactionId || transaction.hubnetTransactionId || '',
           timestamp: transaction.timestamp || new Date().toISOString(),
           reason: transaction.reason || ''
-        }));
-
-      // Sort by timestamp (newest first)
-      orders.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
+        }))
+        .sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp))
+        .slice(0, limit); // Limit to most recent N orders
 
       console.log(`✅ Found ${orders.length} orders using fallback method`);
 
       res.json({
         success: true,
-        orders: orders
+        orders: orders,
+        count: orders.length
       });
     }
   } catch (error) {
@@ -2343,6 +2524,22 @@ app.post('/api/purchase-data', requireAuth, async (req, res) => {
       return res.status(400).json({ 
         success: false, 
         error: 'Phone number must be 10 digits' 
+      });
+    }
+
+    // 🚫 CHECK IF TARGET PHONE IS BLOCKED (NEW)
+    const phoneValidation = await validatePhoneOrder(phoneNumber);
+    if (!phoneValidation.valid) {
+      console.warn(`⚠️ Attempt to purchase data to blocked phone: ${phoneNumber} by user ${userId}`);
+      await logBlockedPhoneAttempt(phoneNumber, 'order', userId, {
+        network: network,
+        amount: amount,
+        ip: req.ip,
+        userAgent: req.get('user-agent')
+      });
+      return res.status(403).json({ 
+        success: false, 
+        error: phoneValidation.error 
       });
     }
 
@@ -3625,6 +3822,7 @@ async function syncDatamartOrderStatus() {
     
     let syncedCount = 0;
     let errorCount = 0;
+    let skippedCount = 0;
     
     for (const [transactionId, transaction] of Object.entries(allTransactions)) {
       try {
@@ -3731,10 +3929,30 @@ function getStatusMessage(status) {
 
 // Start periodic sync (every 5 minutes)
 console.log('⏰ Setting up Datamart order status sync (every 5 minutes)...');
-setInterval(syncDatamartOrderStatus, 5 * 60 * 1000);
+setInterval(() => {
+  syncDatamartOrderStatus().catch(err => console.error('Sync error:', err));
+}, 5 * 60 * 1000);
 
 // Also run once on startup (after 30 seconds)
-setTimeout(syncDatamartOrderStatus, 30000);
+setTimeout(() => {
+  syncDatamartOrderStatus().catch(err => console.error('Initial sync error:', err));
+}, 30000);
+
+// Keep the process alive indefinitely (prevent Node.js from exiting)
+setInterval(() => {
+  // Empty interval just to keep the event loop alive
+}, 1000000);
+
+// Global error handlers
+process.on('uncaughtException', (err) => {
+  console.error('❌ UNCAUGHT EXCEPTION:', err);
+  // Don't exit - keep server running
+});
+
+process.on('unhandledRejection', (reason, promise) => {
+  console.error('❌ UNHANDLED REJECTION at promise:', promise, 'reason:', reason);
+  // Don't exit - keep server running
+});
 
 // Endpoint to manually trigger sync (for testing/admin)
 app.post('/api/admin/sync-datamart-orders', requireAdmin, async (req, res) => {
@@ -3803,10 +4021,28 @@ app.get('/api/order-status/:transactionId', requireAuth, async (req, res) => {
 });
 
 // Start the server
-app.listen(PORT, () => {
+const server = app.listen(PORT, () => {
   console.log(`
 🚀 DataSell Server is running!
 📍 Port: ${PORT}
 🌐 URL: http://localhost:${PORT}
   `);
+  
+  // Confirm server is still running after a brief delay
+  setTimeout(() => {
+    console.log('✅ Server confirmed running and stable after 2 seconds');
+  }, 2000);
+});
+
+server.on('error', (err) => {
+  console.error('❌ Server error:', err);
+  // Don't exit - log the error and keep running
+  if (err.code === 'EADDRINUSE') {
+    console.error(`❌ Port ${PORT} is already in use. Please kill the process using that port or change PORT.`);
+  }
+});
+
+// Log when server closes
+server.on('close', () => {
+  console.log('⚠️  Server closed');
 });

@@ -1,0 +1,13 @@
+{
+  "exportDate": "2026-01-06T10:11:01.348Z",
+  "oldProjectId": "datasell-a3f57",
+  "newProjectId": "datasell-7b993",
+  "collections": {
+    "users": 41,
+    "orders": 0,
+    "transactions": 117,
+    "wallets": 0,
+    "sessions": 172,
+    "supportTickets": 0
+  }
+}

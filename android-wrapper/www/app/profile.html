@@ -1219,7 +1219,104 @@ body {
         }
 
         function changePassword() {
-            showInfoModal('Change Password', 'Password change functionality will be available soon. For now, please contact support if you need to reset your password.');
+            const modal = document.createElement('div');
+            modal.className = 'modal fade';
+            modal.id = 'changePasswordModal';
+            modal.setAttribute('tabindex', '-1');
+            modal.setAttribute('aria-labelledby', 'changePasswordLabel');
+            modal.setAttribute('aria-hidden', 'true');
+            
+            modal.innerHTML = `
+                <div class="modal-dialog modal-dialog-centered">
+                    <div class="modal-content">
+                        <div class="modal-header">
+                            <h5 class="modal-title" id="changePasswordLabel">Change Password</h5>
+                            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                        </div>
+                        <div class="modal-body">
+                            <form id="changePasswordForm">
+                                <div class="mb-3">
+                                    <label for="currentPassword" class="form-label">Current Password</label>
+                                    <input type="password" class="form-control" id="currentPassword" required>
+                                </div>
+                                <div class="mb-3">
+                                    <label for="newPassword" class="form-label">New Password</label>
+                                    <input type="password" class="form-control" id="newPassword" required minlength="6">
+                                    <small class="form-text text-muted">Password must be at least 6 characters</small>
+                                </div>
+                                <div class="mb-3">
+                                    <label for="confirmPassword" class="form-label">Confirm New Password</label>
+                                    <input type="password" class="form-control" id="confirmPassword" required minlength="6">
+                                </div>
+                                <div id="passwordError" class="alert alert-danger d-none"></div>
+                                <div id="passwordSuccess" class="alert alert-success d-none"></div>
+                            </form>
+                        </div>
+                        <div class="modal-footer">
+                            <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                            <button type="button" class="btn btn-primary" id="submitChangePassword">Change Password</button>
+                        </div>
+                    </div>
+                </div>
+            `;
+            
+            document.body.appendChild(modal);
+            const bsModal = new bootstrap.Modal(modal);
+            
+            document.getElementById('submitChangePassword').addEventListener('click', async () => {
+                const currentPassword = document.getElementById('currentPassword').value;
+                const newPassword = document.getElementById('newPassword').value;
+                const confirmPassword = document.getElementById('confirmPassword').value;
+                const errorDiv = document.getElementById('passwordError');
+                const successDiv = document.getElementById('passwordSuccess');
+                
+                errorDiv.classList.add('d-none');
+                successDiv.classList.add('d-none');
+                
+                if (newPassword !== confirmPassword) {
+                    errorDiv.textContent = 'New passwords do not match';
+                    errorDiv.classList.remove('d-none');
+                    return;
+                }
+                
+                if (newPassword.length < 6) {
+                    errorDiv.textContent = 'Password must be at least 6 characters';
+                    errorDiv.classList.remove('d-none');
+                    return;
+                }
+                
+                try {
+                    const response = await fetch('/api/change-password', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json'
+                        },
+                        body: JSON.stringify({
+                            currentPassword: currentPassword,
+                            newPassword: newPassword
+                        })
+                    });
+                    
+                    const data = await response.json();
+                    
+                    if (data.success) {
+                        successDiv.textContent = '✅ Password changed successfully!';
+                        successDiv.classList.remove('d-none');
+                        setTimeout(() => {
+                            bsModal.hide();
+                            modal.remove();
+                        }, 1500);
+                    } else {
+                        errorDiv.textContent = data.error || 'Failed to change password';
+                        errorDiv.classList.remove('d-none');
+                    }
+                } catch (error) {
+                    errorDiv.textContent = 'Error: ' + error.message;
+                    errorDiv.classList.remove('d-none');
+                }
+            });
+            
+            bsModal.show();
         }
 
         function manageNotifications() {
