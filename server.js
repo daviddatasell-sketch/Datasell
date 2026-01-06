@@ -9,6 +9,31 @@ console.log(`📝 Node Version: ${process.version}`);
 console.log(`🌍 Environment: ${process.env.NODE_ENV || 'development'}`);
 console.log('═══════════════════════════════════════════════════════════\n');
 
+// Check required environment variables
+const requiredEnvVars = [
+  'FIREBASE_API_KEY',
+  'FIREBASE_AUTH_DOMAIN',
+  'FIREBASE_DATABASE_URL',
+  'FIREBASE_PROJECT_ID',
+  'FIREBASE_STORAGE_BUCKET',
+  'FIREBASE_MESSAGING_SENDER_ID',
+  'FIREBASE_APP_ID',
+  'FIREBASE_PRIVATE_KEY_ID',
+  'FIREBASE_PRIVATE_KEY',
+  'FIREBASE_CLIENT_EMAIL',
+  'FIREBASE_CLIENT_ID',
+  'FIREBASE_CLIENT_CERT_URL'
+];
+
+console.log('🔍 Checking environment variables...');
+const missingVars = requiredEnvVars.filter(envVar => !process.env[envVar]);
+if (missingVars.length > 0) {
+  console.warn('⚠️  WARNING: Missing environment variables:', missingVars);
+  console.warn('ℹ️  Make sure these are set in Render dashboard under Environment settings');
+} else {
+  console.log('✅ All required environment variables are present');
+}
+
 const express = require('express');
 const path = require('path');
 const fs = require('fs');
@@ -127,68 +152,37 @@ async function sendSmsToUser(userId, phoneFallback, message) {
   }
 }
 console.log('Loaded environment variables:', process.env);
-// Enhanced environment validation
-const requiredEnvVars = [
-  'FIREBASE_PRIVATE_KEY',
-  'FIREBASE_CLIENT_EMAIL', 
-  'FIREBASE_DATABASE_URL',
-  'PAYSTACK_SECRET_KEY',
-  'DATAMART_API_KEY',
-  'SESSION_SECRET',
-  'BASE_URL',
-  'FIREBASE_API_KEY',
-  'FIREBASE_PROJECT_ID'
-];
-
-const missingVars = requiredEnvVars.filter(envVar => !process.env[envVar]);
-if (missingVars.length > 0) {
-  console.error('❌ Missing required environment variables:', missingVars);
-  process.exit(1);
-}
-
 // Enhanced Firebase Admin initialization with better error handling
-console.log('🔄 Starting Firebase initialization...');
-try {
-  const serviceAccount = {
-    type: "service_account",
-    project_id: process.env.FIREBASE_PROJECT_ID,
-    private_key_id: process.env.FIREBASE_PRIVATE_KEY_ID,
-    private_key: process.env.FIREBASE_PRIVATE_KEY?.replace(/\\n/g, '\n'),
-    client_email: process.env.FIREBASE_CLIENT_EMAIL,
-    client_id: process.env.FIREBASE_CLIENT_ID,
-    auth_uri: "https://accounts.google.com/o/oauth2/auth",
-    token_uri: "https://oauth2.googleapis.com/token",
-    auth_provider_x509_cert_url: "https://www.googleapis.com/oauth2/v1/certs",
-    client_x509_cert_url: process.env.FIREBASE_CLIENT_CERT_URL
-  };
+console.log('🔄 Starting Firebase initialization (async, non-blocking)...');
 
-  // Initialize Firebase with timeout protection
-  const firebasePromise = new Promise((resolve, reject) => {
-    const timeout = setTimeout(() => {
-      reject(new Error('Firebase initialization timeout after 15 seconds'));
-    }, 15000);
+// Don't block startup on Firebase - initialize in background
+setTimeout(() => {
+  try {
+    if (!admin.apps.length) {
+      const serviceAccount = {
+        type: "service_account",
+        project_id: process.env.FIREBASE_PROJECT_ID,
+        private_key_id: process.env.FIREBASE_PRIVATE_KEY_ID,
+        private_key: process.env.FIREBASE_PRIVATE_KEY?.replace(/\\n/g, '\n'),
+        client_email: process.env.FIREBASE_CLIENT_EMAIL,
+        client_id: process.env.FIREBASE_CLIENT_ID,
+        auth_uri: "https://accounts.google.com/o/oauth2/auth",
+        token_uri: "https://oauth2.googleapis.com/token",
+        auth_provider_x509_cert_url: "https://www.googleapis.com/oauth2/v1/certs",
+        client_x509_cert_url: process.env.FIREBASE_CLIENT_CERT_URL
+      };
 
-    try {
       admin.initializeApp({
         credential: admin.credential.cert(serviceAccount),
         databaseURL: process.env.FIREBASE_DATABASE_URL
       });
-      clearTimeout(timeout);
       console.log('✅ Firebase Admin initialized successfully');
-      resolve();
-    } catch (error) {
-      clearTimeout(timeout);
-      reject(error);
     }
-  });
+  } catch (error) {
+    console.error('⚠️  Firebase initialization warning:', error.message);
+  }
+}, 100);
 
-  firebasePromise.catch(error => {
-    console.error('⚠️  Firebase initialization warning (non-fatal):', error.message);
-    // Don't exit - server can still run without Firebase for now
-  });
-} catch (error) {
-  console.error('⚠️  Firebase initialization error (non-fatal):', error.message);
-}
 
 // Enhanced Package Cache System with error recovery
 let packageCache = {
