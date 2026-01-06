@@ -3964,10 +3964,11 @@ setInterval(() => {
   syncDatamartOrderStatus().catch(err => console.error('Sync error:', err));
 }, 5 * 60 * 1000);
 
-// Also run once on startup (after 30 seconds)
+// Run sync after 60 seconds (give server time to start and respond to health checks)
 setTimeout(() => {
+  console.log('🔄 Starting initial Datamart sync...');
   syncDatamartOrderStatus().catch(err => console.error('Initial sync error:', err));
-}, 30000);
+}, 60000);
 
 // Keep the process alive indefinitely (prevent Node.js from exiting)
 setInterval(() => {
