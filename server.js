@@ -2,11 +2,12 @@ require('dotenv').config();
 
 // Log startup immediately
 console.log('═══════════════════════════════════════════════════════════');
-console.log('🔥 DATASELL SERVER STARTUP');
+console.log('🔥 DATASELL SERVER STARTUP - VERSION 1.0.1');
 console.log('═══════════════════════════════════════════════════════════');
 console.log(`⏰ Time: ${new Date().toISOString()}`);
 console.log(`📝 Node Version: ${process.version}`);
 console.log(`🌍 Environment: ${process.env.NODE_ENV || 'development'}`);
+console.log('🔴 NOTE: DATAMART SYNC IS DISABLED FOR STABILITY');
 console.log('═══════════════════════════════════════════════════════════\n');
 
 // Check required environment variables
