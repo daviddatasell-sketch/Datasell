@@ -3958,17 +3958,19 @@ function getStatusMessage(status) {
   return messages[status?.toLowerCase()] || `Your order status: ${status}`;
 }
 
-// Start periodic sync (every 5 minutes)
-console.log('⏰ Setting up Datamart order status sync (every 5 minutes)...');
+// Start periodic sync (every 5 minutes) - DISABLED for now
+console.log('⏰ Datamart order status sync - TEMPORARILY DISABLED during deployment');
+/*
 setInterval(() => {
   syncDatamartOrderStatus().catch(err => console.error('Sync error:', err));
 }, 5 * 60 * 1000);
+*/
 
-// Run sync after 60 seconds (give server time to start and respond to health checks)
-setTimeout(() => {
-  console.log('🔄 Starting initial Datamart sync...');
-  syncDatamartOrderStatus().catch(err => console.error('Initial sync error:', err));
-}, 60000);
+// DISABLED: Run sync after 60 seconds (give server time to start and respond to health checks)
+// setTimeout(() => {
+//   console.log('🔄 Starting initial Datamart sync...');
+//   syncDatamartOrderStatus().catch(err => console.error('Initial sync error:', err));
+// }, 60000);
 
 // Keep the process alive indefinitely (prevent Node.js from exiting)
 setInterval(() => {
