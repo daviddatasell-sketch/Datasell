@@ -4020,6 +4020,11 @@ app.get('/api/order-status/:transactionId', requireAuth, async (req, res) => {
   }
 });
 
+// Health check endpoint for Render deployment
+app.get('/health', (req, res) => {
+  res.status(200).json({ status: 'ok', timestamp: new Date().toISOString() });
+});
+
 // Start the server
 const server = app.listen(PORT, () => {
   console.log(`
