@@ -372,9 +372,10 @@ app.use(session({
     secure: (typeof process.env.SESSION_COOKIE_SECURE !== 'undefined') ? (process.env.SESSION_COOKIE_SECURE === 'true') : (process.env.NODE_ENV === 'production'),
     httpOnly: true,
     sameSite: 'lax',
-    maxAge: 24 * 60 * 60 * 1000 // 24 hours
+    maxAge: 30 * 60 * 1000 // 30 minutes inactivity timeout
   },
-  name: 'datasell.sid'
+  name: 'datasell.sid',
+  rolling: true // Reset the session timeout on each request (rolling expiration)
 }));
 
 // Enhanced CORS configuration
@@ -406,6 +407,59 @@ const corsOptions = {
 };
 
 app.use(cors(corsOptions));
+
+// ============================================
+// SESSION TIMEOUT & INACTIVITY MIDDLEWARE
+// ============================================
+// Auto-logout users after 30 minutes of inactivity
+app.use((req, res, next) => {
+  // Skip timeout check for public/auth endpoints
+  const publicRoutes = [
+    '/login',
+    '/signup',
+    '/forgot-password',
+    '/reset-password',
+    '/api/login',
+    '/api/signup',
+    '/api/auth/verify',
+    '/api/health',
+    '/api/ping',
+    '/api/hubnet-webhook',
+    '/api/datamart-webhook',
+    '/config.js'
+  ];
+
+  if (publicRoutes.includes(req.path)) {
+    return next();
+  }
+
+  // For authenticated routes, track activity
+  if (req.session && req.session.user) {
+    const now = Date.now();
+    const lastActivity = req.session.lastActivity || now;
+    const inactiveMs = now - lastActivity;
+    const inactiveMinutes = inactiveMs / (1000 * 60);
+    
+    // 30 minutes timeout
+    if (inactiveMinutes > 30) {
+      console.log(`⏰ Session timeout for user ${req.session.user.uid} after ${Math.floor(inactiveMinutes)} minutes of inactivity`);
+      // Destroy session and redirect to login
+      req.session.destroy((err) => {
+        if (err) console.error('Session destruction error:', err);
+      });
+      return res.status(401).json({ 
+        success: false, 
+        error: 'Session expired due to inactivity. Please login again.',
+        code: 'SESSION_TIMEOUT'
+      });
+    }
+    
+    // Update last activity timestamp for rolling window
+    req.session.lastActivity = now;
+  }
+
+  next();
+});
 
 // Enhanced domain restriction middleware
 app.use((req, res, next) => {
@@ -2638,7 +2692,7 @@ app.post('/api/purchase-data', requireAuth, async (req, res) => {
 
     // Notify user that payment/order is received and processing
     try {
-      const notifyMsg = `Payment received. Your data package will be delivered within 1 to 30 minutes. If any troubles contact support on 0505573287.`;
+      const notifyMsg = `Payment received. Your data package will be delivered within 1 to 30 minutes. If any troubles contact support on 0553843255.`;
       await sendSmsToUser(userId, phoneNumber, notifyMsg);
       console.log('📩 Order-created SMS sent for transaction', transactionId);
     } catch (smsErr) {
