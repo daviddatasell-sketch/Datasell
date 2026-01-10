@@ -627,8 +627,8 @@ body.auth-page {
             const clientId = '503108953382-uk7ks61h051bot7kkv8m1ml9uhla8rkq.apps.googleusercontent.com';
             // Use current domain dynamically - works for both localhost and production
             const baseUrl = window.location.origin;
-            // Important: Remove trailing slash and use exact format
-            const redirectUri = encodeURIComponent(baseUrl.replace(/\/$/, ''));
+            // Important: Append the callback path - must match Google Cloud Console configuration
+            const redirectUri = encodeURIComponent(baseUrl.replace(/\/$/, '') + '/auth/google/callback');
             const scope = encodeURIComponent('openid email profile');
             const responseType = 'code';
             const prompt = 'select_account';
