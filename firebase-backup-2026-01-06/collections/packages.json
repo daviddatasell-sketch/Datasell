@@ -1,0 +1,235 @@
+{
+  "at": {
+    "1": {
+      "active": true,
+      "createdAt": "2025-12-12T08:40:28.731Z",
+      "name": "1GB",
+      "price": 4.5,
+      "validity": "Non-Expiry"
+    },
+    "2": {
+      "active": true,
+      "name": "2GB",
+      "price": 9,
+      "validity": "Non-Expiry"
+    },
+    "3": {
+      "active": true,
+      "name": "3GB",
+      "price": 14,
+      "validity": "Non-Expiry"
+    },
+    "4": {
+      "active": true,
+      "name": "4GB",
+      "price": 18,
+      "validity": "Non-Expiry"
+    },
+    "5": {
+      "active": true,
+      "name": "5GB",
+      "price": 21,
+      "validity": "Non-Expiry"
+    },
+    "6": {
+      "active": true,
+      "name": "6GB",
+      "price": 25,
+      "validity": "Non-Expiry"
+    },
+    "7": {
+      "active": false,
+      "name": "7GB",
+      "price": 27.5,
+      "validity": "Non-Expiry"
+    },
+    "8": {
+      "active": true,
+      "name": "8GB",
+      "price": 32,
+      "validity": "Non-Expiry"
+    },
+    "9": {
+      "active": false,
+      "name": "9GB",
+      "price": 35,
+      "validity": "Non-Expiry"
+    },
+    "10": {
+      "active": true,
+      "name": "10GB",
+      "price": 41,
+      "validity": "Non-Expiry"
+    },
+    "12": {
+      "active": true,
+      "createdAt": "2025-12-12T08:45:47.162Z",
+      "name": "12GB",
+      "price": 48,
+      "validity": "Non-Expiry"
+    },
+    "15": {
+      "active": true,
+      "createdAt": "2025-12-12T08:45:31.391Z",
+      "name": "15GB",
+      "price": 59,
+      "validity": "Non-Expiry"
+    },
+    "20": {
+      "active": false,
+      "name": "20GB",
+      "price": 35,
+      "validity": "Non-Expiry"
+    },
+    "25": {
+      "active": true,
+      "createdAt": "2025-12-12T11:54:32.831Z",
+      "name": "25GB",
+      "price": 98,
+      "validity": "Non-Expiry"
+    },
+    "30": {
+      "active": true,
+      "name": "30GB",
+      "price": 118,
+      "validity": "Non-Expiry"
+    },
+    "40": {
+      "active": false,
+      "name": "40GB",
+      "price": 55,
+      "validity": "Non-Expiry"
+    },
+    "50": {
+      "active": true,
+      "name": "50GB",
+      "price": 195,
+      "validity": "Non-Expiry"
+    },
+    "60": {
+      "active": false,
+      "name": "60GB",
+      "price": 75,
+      "validity": "Non-Expiry"
+    },
+    "70": {
+      "active": false,
+      "name": "70GB",
+      "price": 85,
+      "validity": "Non-Expiry"
+    },
+    "80": {
+      "active": false,
+      "name": "80GB",
+      "price": 95,
+      "validity": "Non-Expiry"
+    },
+    "90": {
+      "active": false,
+      "name": "90GB",
+      "price": 105,
+      "validity": "Non-Expiry"
+    },
+    "100gb": {
+      "active": false,
+      "name": "100GB",
+      "price": 115,
+      "validity": "Non-Expiry"
+    },
+    "1gb": {
+      "active": false,
+      "name": "1GB",
+      "price": 4.5,
+      "validity": "Non-Expiry"
+    }
+  },
+  "mtn": {
+    "1": {
+      "active": true,
+      "createdAt": "2025-12-12T08:38:56.052Z",
+      "name": "1GB",
+      "price": 4.9,
+      "validity": "Non-Expiry"
+    },
+    "2": {
+      "active": true,
+      "name": "2GB",
+      "price": 10,
+      "validity": "Non-Expiry"
+    },
+    "3": {
+      "active": true,
+      "name": "3GB",
+      "price": 14.5,
+      "validity": "Non-Expiry"
+    },
+    "4": {
+      "active": true,
+      "name": "4GB",
+      "price": 19.5,
+      "validity": "Non-Expiry"
+    },
+    "5": {
+      "active": true,
+      "name": "5GB",
+      "price": 24,
+      "validity": "Non-Expiry"
+    },
+    "6": {
+      "active": true,
+      "name": "6GB",
+      "price": 28,
+      "validity": "Non-Expiry"
+    },
+    "8": {
+      "active": true,
+      "name": "8GB",
+      "price": 35.5,
+      "validity": "Non-Expiry"
+    },
+    "10": {
+      "active": true,
+      "name": "10GB",
+      "price": 45,
+      "validity": "Non-Expiry"
+    },
+    "15": {
+      "active": true,
+      "createdAt": "2025-12-12T08:36:12.202Z",
+      "name": "15GB",
+      "price": 63,
+      "validity": "Non-Expiry"
+    },
+    "20": {
+      "active": true,
+      "name": "20GB",
+      "price": 83,
+      "validity": "Non-Expiry"
+    },
+    "25": {
+      "active": true,
+      "createdAt": "2025-12-12T11:49:51.196Z",
+      "name": "25GB",
+      "price": 105,
+      "validity": "Non-Expiry"
+    },
+    "30": {
+      "active": true,
+      "name": "30GB",
+      "price": 125,
+      "validity": "Non-Expiry"
+    },
+    "40": {
+      "active": true,
+      "name": "40GB",
+      "price": 165,
+      "validity": "Non-Expiry"
+    },
+    "50": {
+      "active": true,
+      "name": "50GB",
+      "price": 205,
+      "validity": "Non-Expiry"
+    }
+  }
+}
