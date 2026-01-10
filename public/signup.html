@@ -635,28 +635,22 @@ body.auth-page {
             
             const googleAuthUrl = `https://accounts.google.com/o/oauth2/v2/auth?client_id=${clientId}&redirect_uri=${redirectUri}&response_type=${responseType}&scope=${scope}&prompt=${prompt}`;
             
-            // Determine popup window size based on device type
-            let popupWidth, popupHeight;
+            // Check if mobile device
             const isMobile = /iPhone|iPad|Android|webOS|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
-            const screenWidth = window.screen.width;
-            const screenHeight = window.screen.height;
             
-            if (isMobile || screenWidth < 768) {
-                // Mobile device or small screen - use most of available space
-                popupWidth = Math.max(screenWidth - 40, 300);
-                popupHeight = Math.max(screenHeight - 80, 400);
+            if (isMobile) {
+                // Mobile: Redirect directly instead of opening popup
+                window.location.href = googleAuthUrl;
             } else {
-                // Desktop - use fixed but appropriate size
-                popupWidth = 500;
-                popupHeight = 600;
+                // Desktop: Open in popup window
+                const screenWidth = window.screen.width;
+                const screenHeight = window.screen.height;
+                const popupWidth = 500;
+                const popupHeight = 600;
+                const left = Math.max(0, (screenWidth - popupWidth) / 2);
+                const top = Math.max(0, (screenHeight - popupHeight) / 2);
+                window.open(googleAuthUrl, 'Google Sign In', `width=${popupWidth},height=${popupHeight},left=${left},top=${top},resizable=yes,scrollbars=yes`);
             }
-            
-            // Center the popup on screen
-            const left = Math.max(0, (screenWidth - popupWidth) / 2);
-            const top = Math.max(0, (screenHeight - popupHeight) / 2);
-            
-            // Open in popup window with responsive dimensions
-            window.open(googleAuthUrl, 'Google Sign In', `width=${popupWidth},height=${popupHeight},left=${left},top=${top},resizable=yes,scrollbars=yes`);
         });
     </script>
  
