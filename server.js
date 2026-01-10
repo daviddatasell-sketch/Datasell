@@ -1565,6 +1565,392 @@ app.get('/logout', (req, res) => {
   });
 });
 
+// ============================================
+// Google OAuth Routes
+// ============================================
+
+/**
+ * POST /auth/google/verify
+ * Verify Google ID token and create/login user
+ */
+app.post('/auth/google/verify', async (req, res) => {
+  try {
+    const { idToken, isSignup } = req.body;
+
+    if (!idToken) {
+      return res.status(400).json({
+        success: false,
+        error: 'Google ID token is required'
+      });
+    }
+
+    console.log(`🔐 Google OAuth verification attempt (${isSignup ? 'Signup' : 'Login'})`);
+
+    // Verify the Google ID token using Firebase Admin SDK
+    let decodedToken;
+    try {
+      decodedToken = await admin.auth().verifyIdToken(idToken);
+      console.log(`✅ Google ID token verified for: ${decodedToken.email}`);
+    } catch (tokenError) {
+      console.error(`❌ Invalid Google ID token: ${tokenError.message}`);
+      return res.status(401).json({
+        success: false,
+        error: 'Invalid or expired Google token. Please try again.',
+        details: tokenError.message
+      });
+    }
+
+    const { email, name, picture, uid: googleUid } = decodedToken;
+
+    if (!email) {
+      return res.status(400).json({
+        success: false,
+        error: 'Google account does not have an email address'
+      });
+    }
+
+    const userEmail = email.toLowerCase().trim();
+
+    // Check if user already exists
+    const usersSnapshot = await admin.database().ref('users').once('value');
+    const existingUsers = usersSnapshot.val() || {};
+    
+    let existingUser = null;
+    let existingUid = null;
+
+    // Search for user by email
+    for (const [uid, userData] of Object.entries(existingUsers)) {
+      if (userData.email && userData.email.toLowerCase() === userEmail) {
+        existingUser = userData;
+        existingUid = uid;
+        console.log(`✅ Found existing user with email: ${userEmail}`);
+        break;
+      }
+    }
+
+    let userId, authMethod, isNewUser = false;
+
+    if (existingUser) {
+      // User exists - login
+      if (isSignup) {
+        console.log(`ℹ️ User already exists, proceeding with login instead`);
+      }
+      userId = existingUid;
+      authMethod = existingUser.authMethod || 'database';
+
+      // Update last login and link Google
+      await admin.database().ref(`users/${userId}/lastLogin`).set(new Date().toISOString());
+      await admin.database().ref(`users/${userId}/googleLinked`).set(true);
+      if (picture) {
+        await admin.database().ref(`users/${userId}/profilePicture`).set(picture);
+      }
+
+      console.log(`✅ User logged in: ${email} (${userId})`);
+    } else {
+      // User does not exist
+      if (!isSignup) {
+        return res.status(404).json({
+          success: false,
+          error: 'No account found with this email. Please sign up first.',
+          requireSignup: true
+        });
+      }
+
+      // Create new user
+      userId = googleUid; // Use Google's UID as the user ID
+      authMethod = 'google';
+      isNewUser = true;
+
+      // Parse name
+      const nameParts = (name || 'User').split(' ');
+      const firstName = nameParts[0] || 'User';
+      const lastName = nameParts.slice(1).join(' ') || '';
+
+      // Create user in database
+      await admin.database().ref(`users/${userId}`).set({
+        uid: userId,
+        firstName: firstName.trim(),
+        lastName: lastName.trim(),
+        email: userEmail,
+        phone: '',
+        profilePicture: picture || '',
+        walletBalance: 0,
+        createdAt: new Date().toISOString(),
+        isAdmin: userEmail === process.env.ADMIN_EMAIL,
+        pricingGroup: 'regular',
+        suspended: false,
+        lastLogin: new Date().toISOString(),
+        authMethod: authMethod,
+        googleLinked: true,
+        googleUid: googleUid,
+        passwordHash: null // No password for OAuth users
+      });
+
+      console.log(`✅ New user created via Google OAuth: ${userEmail} (${userId})`);
+    }
+
+    // Set session
+    req.session.user = {
+      uid: userId,
+      email: userEmail,
+      displayName: name || 'User',
+      profilePicture: picture,
+      isAdmin: userEmail === process.env.ADMIN_EMAIL,
+      authMethod: authMethod
+    };
+
+    console.log(`✅ Session created for user: ${userId}`);
+
+    // Set cookie max age for persistent session (7 days)
+    try {
+      req.session.cookie.maxAge = 7 * 24 * 60 * 60 * 1000;
+    } catch (e) {
+      console.log('⚠️ Could not set session cookie max age');
+    }
+
+    // Log the action
+    await admin.database().ref('userLogs').push().set({
+      userId: userId,
+      action: isNewUser ? 'registration_google' : 'login_google',
+      email: userEmail,
+      authMethod: 'google',
+      timestamp: new Date().toISOString(),
+      ip: req.ip
+    });
+
+    return res.json({
+      success: true,
+      userId: userId,
+      email: userEmail,
+      displayName: name,
+      authMethod: authMethod,
+      isNewUser: isNewUser,
+      message: isNewUser 
+        ? 'Account created successfully!' 
+        : 'Logged in successfully!'
+    });
+
+  } catch (error) {
+    console.error('❌ Google OAuth verification error:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Authentication failed: ' + error.message
+    });
+  }
+});
+
+/**
+ * POST /auth/google/link-phone
+ * Link phone number to Google OAuth account (for new users)
+ */
+app.post('/auth/google/link-phone', requireAuth, async (req, res) => {
+  try {
+    const { phone } = req.body;
+
+    if (!phone) {
+      return res.status(400).json({
+        success: false,
+        error: 'Phone number is required'
+      });
+    }
+
+    // Validate phone
+    const phoneValidationResult = validateGhanianPhone(phone);
+    if (!phoneValidationResult.valid) {
+      return res.status(400).json({
+        success: false,
+        error: phoneValidationResult.error
+      });
+    }
+
+    const userId = req.session.user.uid;
+    const normalizedPhone = phoneValidationResult.normalized;
+
+    // Update user's phone
+    await admin.database().ref(`users/${userId}/phone`).set(normalizedPhone);
+
+    console.log(`✅ Phone linked for user: ${userId} - ${normalizedPhone}`);
+
+    return res.json({
+      success: true,
+      phone: normalizedPhone,
+      message: 'Phone number linked successfully!'
+    });
+
+  } catch (error) {
+    console.error('❌ Phone linking error:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to link phone: ' + error.message
+    });
+  }
+});
+
+/**
+ * GET /auth/google/callback
+ * Handles OAuth callback from Google (after user selects account in popup)
+ */
+app.get('/auth/google/callback', async (req, res) => {
+  try {
+    const { code, state, error } = req.query;
+
+    // Check for errors from Google
+    if (error) {
+      console.log(`❌ Google OAuth error: ${error}`);
+      return res.send(`
+        <html>
+          <body style="font-family: Arial, sans-serif; display: flex; justify-content: center; align-items: center; height: 100vh; margin: 0; background: #f5f5f5;">
+            <div style="text-align: center; background: white; padding: 40px; border-radius: 10px; box-shadow: 0 2px 10px rgba(0,0,0,0.1);">
+              <h2 style="color: #d32f2f; margin-top: 0;">Authorization Failed</h2>
+              <p>Error: ${error}</p>
+              <p>Please close this window and try again.</p>
+              <button onclick="window.close()" style="padding: 10px 20px; background: #1976d2; color: white; border: none; border-radius: 5px; cursor: pointer;">Close</button>
+            </div>
+          </body>
+        </html>
+      `);
+    }
+
+    // Authorization code received
+    if (!code) {
+      return res.send(`
+        <html>
+          <body style="font-family: Arial, sans-serif; display: flex; justify-content: center; align-items: center; height: 100vh; margin: 0; background: #f5f5f5;">
+            <div style="text-align: center; background: white; padding: 40px; border-radius: 10px; box-shadow: 0 2px 10px rgba(0,0,0,0.1);">
+              <h2 style="color: #d32f2f; margin-top: 0;">Invalid Request</h2>
+              <p>Authorization code not received.</p>
+              <p>Please close this window and try again.</p>
+              <button onclick="window.close()" style="padding: 10px 20px; background: #1976d2; color: white; border: none; border-radius: 5px; cursor: pointer;">Close</button>
+            </div>
+          </body>
+        </html>
+      `);
+    }
+
+    // Exchange code for token
+    const tokenResponse = await fetch('https://oauth2.googleapis.com/token', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({
+        code: code,
+        client_id: process.env.GOOGLE_OAUTH_CLIENT_ID,
+        client_secret: process.env.GOOGLE_OAUTH_CLIENT_SECRET,
+        redirect_uri: process.env.BASE_URL || 'http://localhost:3000',
+        grant_type: 'authorization_code'
+      }).toString()
+    });
+
+    const tokenData = await tokenResponse.json();
+
+    if (tokenData.error) {
+      console.log(`❌ Token exchange error: ${tokenData.error}`);
+      throw new Error(tokenData.error_description || 'Failed to exchange authorization code');
+    }
+
+    if (!tokenData.id_token) {
+      console.log('❌ No ID token received from Google');
+      throw new Error('Failed to get ID token');
+    }
+
+    // Verify the ID token using Firebase
+    const decodedToken = await admin.auth().verifyIdToken(tokenData.id_token);
+    const { email, name, picture, uid } = decodedToken;
+
+    // Store session data
+    req.session.user = {
+      uid: uid,
+      email: email,
+      name: name,
+      picture: picture,
+      authMethod: 'google'
+    };
+
+    // Find or create user in database
+    const userRef = admin.database().ref(`users/${uid}`);
+    const userSnapshot = await userRef.once('value');
+
+    if (!userSnapshot.exists()) {
+      // New user - create account
+      await userRef.set({
+        uid: uid,
+        email: email,
+        name: name || 'User',
+        profilePicture: picture,
+        authMethod: 'google',
+        googleLinked: true,
+        createdAt: new Date().toISOString(),
+        lastLogin: new Date().toISOString(),
+        phone: null
+      });
+
+      console.log(`✅ New user created via Google: ${email}`);
+    } else {
+      // Existing user - update last login
+      await userRef.update({
+        lastLogin: new Date().toISOString(),
+        googleLinked: true
+      });
+
+      console.log(`✅ User logged in via Google: ${email}`);
+    }
+
+    // Return success page that closes popup
+    return res.send(`
+      <html>
+        <body style="font-family: Arial, sans-serif; display: flex; justify-content: center; align-items: center; height: 100vh; margin: 0; background: #f5f5f5;">
+          <div style="text-align: center; background: white; padding: 40px; border-radius: 10px; box-shadow: 0 2px 10px rgba(0,0,0,0.1);">
+            <h2 style="color: #4caf50; margin-top: 0;">✓ Signed In Successfully</h2>
+            <p>Welcome, ${name || 'User'}!</p>
+            <p>Redirecting you...</p>
+            <script>
+              setTimeout(() => {
+                window.opener.location.href = '/';
+                window.close();
+              }, 1000);
+            </script>
+          </div>
+        </body>
+      </html>
+    `);
+
+  } catch (error) {
+    console.error('❌ OAuth callback error:', error);
+    return res.send(`
+      <html>
+        <body style="font-family: Arial, sans-serif; display: flex; justify-content: center; align-items: center; height: 100vh; margin: 0; background: #f5f5f5;">
+          <div style="text-align: center; background: white; padding: 40px; border-radius: 10px; box-shadow: 0 2px 10px rgba(0,0,0,0.1);">
+            <h2 style="color: #d32f2f; margin-top: 0;">Authentication Error</h2>
+            <p>${error.message}</p>
+            <p>Please close this window and try again.</p>
+            <button onclick="window.close()" style="padding: 10px 20px; background: #1976d2; color: white; border: none; border-radius: 5px; cursor: pointer;">Close</button>
+          </div>
+        </body>
+      </html>
+    `);
+  }
+});
+
+/**
+ * GET / (root) - Also handle OAuth callback when redirect is to root
+ */
+app.get('/', (req, res, next) => {
+  const { code } = req.query;
+  
+  // If there's an OAuth code, it's a callback - handle it
+  if (code) {
+    return require('express-async-errors').handler(async (req, res) => {
+      // Call the callback handler
+      const callbackHandler = app._router.stack.find(layer => layer.name === 'router' && layer.handle.stack.some(s => s.route && s.route.path === '/auth/google/callback'));
+      // Actually, let's just forward to the callback endpoint
+      req.url = `/auth/google/callback${req.url.includes('?') ? '?' + req.url.split('?')[1] : ''}`;
+      next();
+    })(req, res, next);
+  }
+  
+  // Otherwise, serve the homepage normally
+  next();
+});
+
 // Change Password Endpoint
 app.post('/api/change-password', requireAuth, async (req, res) => {
   try {
