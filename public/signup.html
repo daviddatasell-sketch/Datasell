@@ -35,7 +35,7 @@ body.auth-page {
     align-items: center;
     justify-content: center;
     padding: 1rem;
-    padding-top: 150px;
+    padding-top: 200px;
     backdrop-filter: blur(8px);
     -webkit-backdrop-filter: blur(8px);
     background-attachment: fixed;
@@ -627,7 +627,8 @@ body.auth-page {
             const clientId = '503108953382-uk7ks61h051bot7kkv8m1ml9uhla8rkq.apps.googleusercontent.com';
             // Use current domain dynamically - works for both localhost and production
             const baseUrl = window.location.origin;
-            const redirectUri = encodeURIComponent(baseUrl);
+            // Important: Remove trailing slash and use exact format
+            const redirectUri = encodeURIComponent(baseUrl.replace(/\/$/, ''));
             const scope = encodeURIComponent('openid email profile');
             const responseType = 'code';
             const prompt = 'select_account';
