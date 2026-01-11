@@ -1912,7 +1912,7 @@ app.post('/auth/google/link-phone', requireAuth, async (req, res) => {
 
 
 /**
- * GET / (root) - Also handle OAuth callback when redirect is to root
+ * GET / (root) - Redirect unauthenticated users to login
  */
 app.get('/', (req, res, next) => {
   const { code } = req.query;
@@ -1928,7 +1928,13 @@ app.get('/', (req, res, next) => {
     })(req, res, next);
   }
   
-  // Otherwise, serve the homepage normally
+  // Check if user is authenticated
+  if (!req.session || !req.session.userId) {
+    // Not authenticated - redirect to login
+    return res.redirect('/login');
+  }
+  
+  // Authenticated - serve the homepage normally
   next();
 });
 
