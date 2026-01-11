@@ -1,0 +1,120 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Firebase CDN Test</title>
+    <style>
+        body { font-family: Arial; margin: 20px; background: #f0f0f0; }
+        .container { max-width: 800px; margin: 0 auto; background: white; padding: 20px; border-radius: 8px; }
+        h1 { color: #333; }
+        .test { padding: 10px; margin: 10px 0; border-radius: 4px; border-left: 4px solid #ccc; }
+        .test.loading { border-color: #ff9800; background: #fff3e0; }
+        .test.success { border-color: #4caf50; background: #e8f5e9; }
+        .test.failed { border-color: #f44336; background: #ffebee; }
+        code { background: #f5f5f5; padding: 2px 6px; border-radius: 3px; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🔥 Firebase CDN Loading Test</h1>
+        
+        <div id="test1" class="test loading">
+            <strong>Test 1:</strong> Loading firebase-app.js from jsDelivr...
+        </div>
+        
+        <div id="test2" class="test loading">
+            <strong>Test 2:</strong> Loading firebase-auth.js from jsDelivr...
+        </div>
+        
+        <div id="test3" class="test loading">
+            <strong>Test 3:</strong> Initializing Firebase...
+        </div>
+        
+        <div id="results" style="margin-top: 20px; padding: 15px; background: #f9f9f9; border-radius: 4px;"></div>
+    </div>
+
+    <!-- Firebase Scripts from jsDelivr CDN -->
+    <script src="https://cdn.jsdelivr.net/npm/firebase@9.22.0/app/dist/firebase-app.js" onload="onFirebaseAppLoaded()"></script>
+    <script src="https://cdn.jsdelivr.net/npm/firebase@9.22.0/auth/dist/firebase-auth.js" onload="onFirebaseAuthLoaded()"></script>
+
+    <script>
+        const results = [];
+        
+        function updateTest(id, status, message) {
+            const el = document.getElementById(id);
+            el.className = `test ${status}`;
+            el.innerHTML = `<strong>${id.replace('test', 'Test ')}:</strong> ${message}`;
+            results.push({ id, status, message });
+        }
+        
+        function onFirebaseAppLoaded() {
+            console.log('✅ firebase-app.js loaded from jsDelivr');
+            updateTest('test1', 'success', '✅ firebase-app.js loaded successfully from jsDelivr');
+        }
+        
+        function onFirebaseAuthLoaded() {
+            console.log('✅ firebase-auth.js loaded from jsDelivr');
+            updateTest('test2', 'success', '✅ firebase-auth.js loaded successfully from jsDelivr');
+        }
+        
+        // Wait a bit and then test Firebase initialization
+        setTimeout(() => {
+            console.log('Checking Firebase availability...');
+            if (typeof firebase !== 'undefined') {
+                console.log('✅ Firebase is available!');
+                updateTest('test3', 'success', '✅ Firebase is available! Object detected in window scope.');
+                
+                const firebaseConfig = {
+                    apiKey: "AIzaSyAdB-9vEhC6dXSQvCjBpZrB8_HqL2Xmwvs",
+                    authDomain: "datasell-7b993.firebaseapp.com",
+                    projectId: "datasell-7b993",
+                    storageBucket: "datasell-7b993.appspot.com",
+                    messagingSenderId: "503108953382",
+                    appId: "1:503108953382:web:6f13b13e92d6e832cc3f63"
+                };
+                
+                try {
+                    firebase.initializeApp(firebaseConfig);
+                    console.log('✅ Firebase initialized successfully');
+                    
+                    document.getElementById('results').innerHTML = `
+                        <h2 style="color: #4caf50;">✅ All Tests Passed!</h2>
+                        <p><strong>Status:</strong> Firebase is properly loaded and initialized.</p>
+                        <p><strong>firebase object:</strong> <code>${typeof firebase}</code></p>
+                        <p><strong>firebase.auth:</strong> <code>${typeof firebase.auth}</code></p>
+                        <p><strong>firebase.auth():</strong> <code>${typeof firebase.auth()}</code></p>
+                        <hr>
+                        <p><strong>Next Steps:</strong></p>
+                        <ol>
+                            <li>Go to <a href="/login">http://localhost:3000/login</a></li>
+                            <li>Try clicking the "Continue with Google" button</li>
+                            <li>The Firebase SDK should now work correctly</li>
+                        </ol>
+                    `;
+                } catch (error) {
+                    console.error('❌ Firebase initialization error:', error);
+                    document.getElementById('results').innerHTML = `
+                        <h2 style="color: #f44336;">❌ Initialization Failed</h2>
+                        <p><strong>Error:</strong> ${error.message}</p>
+                    `;
+                }
+            } else {
+                console.error('❌ Firebase is NOT available!');
+                updateTest('test3', 'failed', '❌ Firebase is NOT available. The CDN scripts may not have loaded.');
+                
+                document.getElementById('results').innerHTML = `
+                    <h2 style="color: #f44336;">❌ Firebase Loading Failed</h2>
+                    <p>The Firebase SDK scripts from jsDelivr CDN did not load properly.</p>
+                    <p><strong>Possible causes:</strong></p>
+                    <ul>
+                        <li>Internet connection issue</li>
+                        <li>jsDelivr CDN is blocked or unreachable</li>
+                        <li>Firewall or proxy blocking the CDN</li>
+                        <li>Browser privacy/security settings</li>
+                    </ul>
+                    <p><strong>Try:</strong> Check your browser's Network tab (F12) to see if the scripts loaded.</p>
+                `;
+            }
+        }, 2000);
+    </script>
+</body>
+</html>

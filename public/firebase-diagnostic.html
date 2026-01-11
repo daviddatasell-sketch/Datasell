@@ -1,0 +1,185 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Firebase Diagnostic Test</title>
+    <style>
+        body { font-family: monospace; background: #1e1e1e; color: #d4d4d4; margin: 0; padding: 20px; }
+        .container { max-width: 900px; margin: 0 auto; }
+        h1 { color: #4ec9b0; }
+        .section { background: #252526; padding: 20px; margin: 20px 0; border-radius: 4px; border-left: 4px solid #007acc; }
+        .log-line { padding: 5px 0; border-bottom: 1px solid #3e3e42; }
+        .success { color: #4ec9b0; }
+        .error { color: #f48771; }
+        .info { color: #569cd6; }
+        .warning { color: #ce9178; }
+        button { background: #007acc; color: white; border: none; padding: 10px 20px; border-radius: 4px; cursor: pointer; margin: 5px; }
+        button:hover { background: #005a9e; }
+        .status { display: inline-block; padding: 5px 10px; border-radius: 3px; font-weight: bold; margin-left: 10px; }
+        .status.ok { background: #4ec9b0; color: #000; }
+        .status.error { background: #f48771; color: #fff; }
+        .status.pending { background: #ce9178; color: #000; }
+        code { background: #1a1a1a; padding: 2px 6px; border-radius: 3px; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🔧 Firebase Diagnostic Test</h1>
+        
+        <div class="section">
+            <h2>System Status</h2>
+            <div class="log-line">Firebase SDK: <span id="fbStatus" class="status pending">Loading...</span></div>
+            <div class="log-line">Firebase Auth: <span id="authStatus" class="status pending">Checking...</span></div>
+            <div class="log-line">Backend API: <span id="apiStatus" class="status pending">Checking...</span></div>
+        </div>
+        
+        <div class="section">
+            <h2>Test Actions</h2>
+            <button onclick="testScriptLoading()">1. Test Script Loading</button>
+            <button onclick="testCDN()">2. Test CDN Connectivity</button>
+            <button onclick="testBackend()">3. Test Backend</button>
+            <button onclick="testSignIn()">4. Test Google Sign-In</button>
+            <button onclick="clearLogs()">Clear Logs</button>
+        </div>
+        
+        <div class="section">
+            <h2>Console Output</h2>
+            <div id="logs"></div>
+        </div>
+    </div>
+
+    <!-- Firebase Scripts -->
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app.js" 
+            onload="log('✅ firebase-app.js script loaded from CDN', 'success')" 
+            onerror="log('❌ firebase-app.js FAILED to load from CDN', 'error')"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-auth.js" 
+            onload="log('✅ firebase-auth.js script loaded from CDN', 'success')" 
+            onerror="log('❌ firebase-auth.js FAILED to load from CDN', 'error')"></script>
+
+    <script>
+        const logsDiv = document.getElementById('logs');
+        
+        function log(msg, type = 'info') {
+            const div = document.createElement('div');
+            div.className = `log-line ${type}`;
+            div.textContent = `[${new Date().toLocaleTimeString()}] ${msg}`;
+            logsDiv.insertBefore(div, logsDiv.firstChild);
+            console.log(msg);
+        }
+        
+        function clearLogs() {
+            logsDiv.innerHTML = '';
+            log('Logs cleared');
+        }
+        
+        function updateStatus(id, status, text) {
+            const el = document.getElementById(id);
+            el.className = `status ${status}`;
+            el.textContent = text;
+        }
+        
+        // Test 1: Script Loading
+        function testScriptLoading() {
+            log('=== Testing Script Loading ===', 'info');
+            
+            setTimeout(() => {
+                if (typeof firebase !== 'undefined') {
+                    log('✅ firebase object is defined', 'success');
+                    updateStatus('fbStatus', 'ok', 'Loaded');
+                    
+                    if (typeof firebase.auth === 'function') {
+                        log('✅ firebase.auth() is available', 'success');
+                        updateStatus('authStatus', 'ok', 'Available');
+                    } else {
+                        log('❌ firebase.auth is NOT available', 'error');
+                        updateStatus('authStatus', 'error', 'Not Available');
+                    }
+                } else {
+                    log('❌ firebase object is NOT defined', 'error');
+                    log('   Scripts may have failed to load', 'error');
+                    log('   Check browser Network tab for failures', 'warning');
+                    updateStatus('fbStatus', 'error', 'Not Loaded');
+                }
+            }, 1000);
+        }
+        
+        // Test 2: CDN Connectivity
+        function testCDN() {
+            log('=== Testing CDN Connectivity ===', 'info');
+            
+            const urls = [
+                'https://www.gstatic.com/firebasejs/9.22.0/firebase-app.js',
+                'https://www.gstatic.com/firebasejs/9.22.0/firebase-auth.js'
+            ];
+            
+            urls.forEach(url => {
+                fetch(url, { method: 'HEAD' })
+                    .then(res => {
+                        log(`✅ ${url.split('/').pop()}: HTTP ${res.status}`, 'success');
+                    })
+                    .catch(err => {
+                        log(`❌ ${url.split('/').pop()}: ${err.message}`, 'error');
+                    });
+            });
+        }
+        
+        // Test 3: Backend
+        function testBackend() {
+            log('=== Testing Backend API ===', 'info');
+            
+            fetch('/api/user')
+                .then(res => {
+                    log(`✅ Backend responded: HTTP ${res.status}`, 'success');
+                    updateStatus('apiStatus', 'ok', 'Running');
+                    return res.json();
+                })
+                .then(data => {
+                    log(`✅ Response: ${JSON.stringify(data).substring(0, 100)}...`, 'info');
+                })
+                .catch(err => {
+                    log(`❌ Backend error: ${err.message}`, 'error');
+                    updateStatus('apiStatus', 'error', 'Error');
+                });
+        }
+        
+        // Test 4: Full Sign-In
+        function testSignIn() {
+            log('=== Testing Google Sign-In ===', 'info');
+            
+            if (typeof firebase === 'undefined') {
+                log('❌ Firebase not loaded - cannot test sign-in', 'error');
+                return;
+            }
+            
+            try {
+                const provider = new firebase.auth.GoogleAuthProvider();
+                log('✅ Created GoogleAuthProvider', 'success');
+                
+                firebase.auth().signInWithPopup(provider)
+                    .then(result => {
+                        log(`✅ Sign-in successful: ${result.user.email}`, 'success');
+                        return result.user.getIdToken();
+                    })
+                    .then(token => {
+                        log(`✅ Got ID token (${token.length} chars)`, 'success');
+                    })
+                    .catch(err => {
+                        if (err.code === 'auth/popup-closed-by-user') {
+                            log('ℹ️  Popup closed by user', 'info');
+                        } else {
+                            log(`❌ Sign-in error: ${err.message}`, 'error');
+                        }
+                    });
+            } catch (error) {
+                log(`❌ Error creating provider: ${error.message}`, 'error');
+            }
+        }
+        
+        // Auto-run initial tests
+        log('📍 Page loaded, running initial diagnostics...', 'info');
+        setTimeout(() => {
+            testScriptLoading();
+            testBackend();
+        }, 1000);
+    </script>
+</body>
+</html>

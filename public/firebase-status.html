@@ -1,0 +1,143 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Firebase CDN Status</title>
+    <style>
+        body { 
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            margin: 0;
+            padding: 20px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+        }
+        .container {
+            max-width: 600px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 12px;
+            padding: 30px;
+            box-shadow: 0 10px 40px rgba(0,0,0,0.2);
+        }
+        h1 { color: #333; margin-top: 0; }
+        .status-box {
+            padding: 20px;
+            margin: 15px 0;
+            border-radius: 8px;
+            border-left: 4px solid;
+        }
+        .status-box.loading {
+            background: #fff3cd;
+            border-color: #ffc107;
+        }
+        .status-box.success {
+            background: #d4edda;
+            border-color: #28a745;
+        }
+        .status-box.error {
+            background: #f8d7da;
+            border-color: #dc3545;
+        }
+        .status-label {
+            font-weight: bold;
+            margin-bottom: 5px;
+        }
+        .status-value {
+            font-size: 14px;
+            color: #666;
+        }
+        .spinner {
+            display: inline-block;
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: #ffc107;
+            animation: blink 1s infinite;
+            margin-right: 8px;
+        }
+        @keyframes blink {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.3; }
+        }
+        button {
+            background: #667eea;
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: bold;
+            margin-top: 20px;
+            width: 100%;
+        }
+        button:hover {
+            background: #764ba2;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🔥 Firebase CDN Status Monitor</h1>
+        
+        <div id="fbStatus" class="status-box loading">
+            <div class="status-label"><span class="spinner"></span>Firebase Loading...</div>
+            <div class="status-value" id="fbDetails">Attempting to load Firebase SDK from multiple CDN sources...</div>
+        </div>
+        
+        <div id="cdnStatus" class="status-box loading" style="display:none;">
+            <div class="status-label">CDN Source</div>
+            <div class="status-value" id="cdnName">Unknown</div>
+        </div>
+        
+        <button onclick="testFirebase()">Test Firebase</button>
+    </div>
+
+    <script>
+        // Listen for Firebase loading
+        const statusEl = document.getElementById('fbStatus');
+        const cdnStatusEl = document.getElementById('cdnStatus');
+        const fbDetailsEl = document.getElementById('fbDetails');
+        const cdnNameEl = document.getElementById('cdnName');
+        
+        // Check Firebase status every 500ms
+        const checkInterval = setInterval(() => {
+            const isLoading = window.firebaseLoading;
+            const source = window.firebaseSource;
+            const error = window.firebaseError;
+            const fbAvailable = typeof firebase !== 'undefined';
+            
+            if (!isLoading && fbAvailable && source) {
+                clearInterval(checkInterval);
+                statusEl.className = 'status-box success';
+                statusEl.innerHTML = `<div class="status-label">✅ Firebase Loaded</div><div class="status-value">Successfully loaded from ${source} CDN</div>`;
+                cdnStatusEl.style.display = 'block';
+                cdnNameEl.textContent = `${source}`;
+                cdnStatusEl.className = 'status-box success';
+            } else if (!isLoading && error) {
+                clearInterval(checkInterval);
+                statusEl.className = 'status-box error';
+                statusEl.innerHTML = `<div class="status-label">❌ Firebase Failed</div><div class="status-value">${error}</div>`;
+                cdnStatusEl.style.display = 'none';
+            }
+        }, 500);
+        
+        // Timeout after 15 seconds
+        setTimeout(() => {
+            if (typeof firebase === 'undefined') {
+                clearInterval(checkInterval);
+                statusEl.className = 'status-box error';
+                fbDetailsEl.textContent = 'Firebase did not load after 15 seconds. Please refresh the page and check your internet connection.';
+            }
+        }, 15000);
+        
+        function testFirebase() {
+            if (typeof firebase === 'undefined') {
+                alert('Firebase is not available. Please wait for it to load and try again.');
+                return;
+            }
+            
+            alert(`✅ Firebase is working!\n\nSource: ${window.firebaseSource}\nAuth available: ${typeof firebase.auth === 'function'}`);
+        }
+    </script>
+</body>
+</html>

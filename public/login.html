@@ -498,98 +498,67 @@ body.auth-page {
         </div>
     </div>
 
-    <!-- Google Sign-In Script -->
-    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app.js"></script>
-    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-auth.js"></script>
-    <script>
-        // Initialize Firebase
-        const firebaseConfig = {
-            apiKey: "AIzaSyAdB-9vEhC6dXSQvCjBpZrB8_HqL2Xmwvs",
-            authDomain: "datasell-7b993.firebaseapp.com",
-            projectId: "datasell-7b993",
-            storageBucket: "datasell-7b993.appspot.com",
-            messagingSenderId: "503108953382",
-            appId: "1:503108953382:web:6f13b13e92d6e832cc3f63"
-        };
-        
-        // Initialize Firebase
-        firebase.initializeApp(firebaseConfig);
-    </script>
+    <!-- Simple Google Sign-In - Backend handles Firebase -->
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/notyf@3/notyf.min.js"></script>
+    <script src="https://accounts.google.com/gsi/client" async defer></script>
 
     <script>
-        // Firebase Google Sign-In Implementation
-        function initGoogleSignIn() {
-            const btn = document.getElementById('googleSignInBtn');
+        // Initialize Google Sign-In with callback
+        window.handleCredentialResponse = function(response) {
+            console.log('✅ Google credential received, verifying...');
             
-            if (!btn) {
-                console.error('ERROR: googleSignInBtn element not found!');
-                return;
-            }
-            
-            btn.addEventListener('click', async function(e) {
-                e.preventDefault();
-                console.log('Google Sign-In button clicked');
-                
-                try {
-                    // Build the Firebase Google Sign-In provider
-                    const provider = new firebase.auth.GoogleAuthProvider();
-                    provider.addScope('profile');
-                    provider.addScope('email');
-                    
-                    // Sign in with popup
-                    const result = await firebase.auth().signInWithPopup(provider);
-                    console.log('✅ Firebase Google Sign-In successful:', result.user.email);
-                    
-                    // Get the ID token from Firebase
-                    const idToken = await result.user.getIdToken();
-                    
-                    // Send token to backend to verify and create/login user
-                    const response = await fetch('/auth/firebase-google', {
-                        method: 'POST',
-                        credentials: 'include',
-                        headers: {
-                            'Content-Type': 'application/json'
-                        },
-                        body: JSON.stringify({
-                            idToken: idToken,
-                            isSignup: false  // On login page, isSignup is false
-                        })
-                    });
-                    
-                    const data = await response.json();
-                    
-                    if (data.success) {
-                        console.log('✅ Backend verification successful');
-                        // Redirect to dashboard
-                        window.location.href = '/';
-                    } else {
-                        console.error('❌ Backend error:', data.error);
-                        alert(data.error || 'Authentication failed');
-                    }
-                    
-                } catch (error) {
-                    console.error('❌ Google Sign-In error:', error);
-                    
-                    // Handle specific Firebase auth errors
-                    if (error.code === 'auth/popup-blocked') {
-                        alert('Please enable popups and try again');
-                    } else if (error.code === 'auth/popup-closed-by-user') {
-                        console.log('User closed the sign-in popup');
-                    } else {
-                        alert('Sign-in failed: ' + error.message);
-                    }
+            // Send token to backend for verification
+            fetch('/auth/firebase-google', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    idToken: response.credential,
+                    isSignup: false
+                })
+            })
+            .then(r => r.json())
+            .then(data => {
+                if (data.success) {
+                    console.log('✅ Authentication successful:', data.email);
+                    // Redirect to dashboard
+                    window.location.href = '/';
+                } else {
+                    console.error('❌ Authentication failed:', data.error);
+                    alert('Sign-in failed: ' + (data.error || 'Unknown error'));
                 }
+            })
+            .catch(error => {
+                console.error('❌ Verification error:', error);
+                alert('Error verifying credentials. Please try again.');
             });
-        }
+        };
         
-        // Initialize when DOM is ready
-        if (document.readyState === 'loading') {
-            document.addEventListener('DOMContentLoaded', initGoogleSignIn);
-        } else {
-            initGoogleSignIn();
-        }
+        window.onload = function() {
+            try {
+                google.accounts.id.initialize({
+                    client_id: '503108953382-gk6boqvp22bjaet93e4s4h049gg2tsvg.apps.googleusercontent.com',
+                    callback: handleCredentialResponse,
+                    auto_select: false
+                });
+                
+                // Render sign-in button
+                const googleBtn = document.getElementById('googleSignInBtn');
+                if (googleBtn) {
+                    google.accounts.id.renderButton(googleBtn, {
+                        theme: 'filled_blue',
+                        size: 'large',
+                        width: '100%'
+                    });
+                }
+                console.log('✅ Google Sign-In initialized');
+            } catch (error) {
+                console.error('❌ Google Sign-In initialization failed:', error);
+                document.getElementById('googleSignInBtn').style.display = 'none';
+            }
+        };
     </script>
  
  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>

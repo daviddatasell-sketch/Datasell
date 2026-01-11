@@ -1,0 +1,354 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Firebase Sign-In Debug</title>
+    <style>
+        body { 
+            font-family: 'Courier New', monospace; 
+            margin: 0; 
+            padding: 20px; 
+            background: #1e1e1e; 
+            color: #d4d4d4;
+        }
+        .container { max-width: 1200px; margin: 0 auto; }
+        h1 { color: #4ec9b0; margin-top: 0; }
+        h2 { color: #569cd6; margin-top: 30px; }
+        .section { 
+            background: #252526; 
+            border: 1px solid #3e3e42; 
+            border-radius: 4px; 
+            padding: 15px; 
+            margin: 15px 0;
+        }
+        .log { 
+            background: #1e1e1e; 
+            border-left: 3px solid #007acc; 
+            padding: 10px 15px; 
+            margin: 5px 0;
+            font-size: 13px;
+            line-height: 1.5;
+        }
+        .log.success { border-left-color: #4ec9b0; }
+        .log.error { border-left-color: #f48771; }
+        .log.warning { border-left-color: #ce9178; }
+        .log.info { border-left-color: #569cd6; }
+        .button-group { margin: 20px 0; }
+        button { 
+            background: #007acc; 
+            color: white; 
+            border: none; 
+            padding: 10px 20px; 
+            margin: 5px 5px 5px 0;
+            border-radius: 4px; 
+            cursor: pointer; 
+            font-size: 14px;
+        }
+        button:hover { background: #005a9e; }
+        .status { 
+            display: inline-block; 
+            padding: 4px 8px; 
+            border-radius: 3px; 
+            font-size: 12px; 
+            font-weight: bold;
+            margin-left: 10px;
+        }
+        .status.ok { background: #4ec9b0; color: #1e1e1e; }
+        .status.error { background: #f48771; color: #1e1e1e; }
+        .status.pending { background: #ce9178; color: #1e1e1e; }
+        code { background: #1a1a1a; padding: 2px 6px; border-radius: 3px; }
+        pre { 
+            background: #1a1a1a; 
+            padding: 15px; 
+            border-radius: 4px; 
+            overflow-x: auto;
+            border: 1px solid #3e3e42;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🔥 Firebase Google Sign-In Debug Console</h1>
+        
+        <div class="section">
+            <h2>📊 System Status</h2>
+            <div class="log info">Firebase SDK Status: <span id="fbStatus" class="status pending">Loading...</span></div>
+            <div class="log info">Backend Endpoint: <span id="backendStatus" class="status pending">Checking...</span></div>
+            <div class="log info">Session: <span id="sessionStatus" class="status pending">Checking...</span></div>
+        </div>
+
+        <div class="section">
+            <h2>🧪 Test Actions</h2>
+            <div class="button-group">
+                <button onclick="testFirebaseLoad()">1. Test Firebase Load</button>
+                <button onclick="testBackendConnection()">2. Test Backend Connection</button>
+                <button onclick="testSession()">3. Test Session</button>
+                <button onclick="testSignIn()">4. Test Google Sign-In</button>
+                <button onclick="clearLogs()">Clear Logs</button>
+            </div>
+        </div>
+
+        <div class="section">
+            <h2>📝 Console Output</h2>
+            <div id="logs"></div>
+        </div>
+
+        <div class="section">
+            <h2>🔍 Detailed Information</h2>
+            <h3>Firebase Configuration</h3>
+            <pre id="firebaseConfig"></pre>
+            <h3>Received Response (Last)</h3>
+            <pre id="response"></pre>
+        </div>
+    </div>
+
+    <!-- Firebase Scripts from jsDelivr CDN -->
+    <script src="https://cdn.jsdelivr.net/npm/firebase@9.22.0/app/dist/firebase-app.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/firebase@9.22.0/auth/dist/firebase-auth.js"></script>
+
+    <script>
+        const logsDiv = document.getElementById('logs');
+        const firebaseConfig = {
+            apiKey: "AIzaSyAdB-9vEhC6dXSQvCjBpZrB8_HqL2Xmwvs",
+            authDomain: "datasell-7b993.firebaseapp.com",
+            projectId: "datasell-7b993",
+            storageBucket: "datasell-7b993.appspot.com",
+            messagingSenderId: "503108953382",
+            appId: "1:503108953382:web:6f13b13e92d6e832cc3f63"
+        };
+
+        function log(message, type = 'info') {
+            const div = document.createElement('div');
+            div.className = `log ${type}`;
+            const time = new Date().toLocaleTimeString();
+            div.innerHTML = `[${time}] ${message}`;
+            logsDiv.insertBefore(div, logsDiv.firstChild);
+            console.log(`[${type.toUpperCase()}] ${message}`);
+        }
+
+        function clearLogs() {
+            logsDiv.innerHTML = '';
+            log('Logs cleared');
+        }
+
+        function updateFirebaseStatus(status) {
+            const el = document.getElementById('fbStatus');
+            if (status === 'ready') {
+                el.textContent = '✅ Ready';
+                el.className = 'status ok';
+            } else if (status === 'error') {
+                el.textContent = '❌ Error';
+                el.className = 'status error';
+            } else {
+                el.textContent = '⏳ Loading...';
+                el.className = 'status pending';
+            }
+        }
+
+        function updateBackendStatus(status) {
+            const el = document.getElementById('backendStatus');
+            if (status === 'ok') {
+                el.textContent = '✅ Accessible';
+                el.className = 'status ok';
+            } else if (status === 'error') {
+                el.textContent = '❌ Unreachable';
+                el.className = 'status error';
+            } else {
+                el.textContent = '⏳ Testing...';
+                el.className = 'status pending';
+            }
+        }
+
+        function updateSessionStatus(status) {
+            const el = document.getElementById('sessionStatus');
+            if (status === 'authenticated') {
+                el.textContent = '✅ Authenticated';
+                el.className = 'status ok';
+            } else if (status === 'error') {
+                el.textContent = '❌ Error';
+                el.className = 'status error';
+            } else {
+                el.textContent = '⏳ Checking...';
+                el.className = 'status pending';
+            }
+        }
+
+        // Display Firebase config
+        document.getElementById('firebaseConfig').textContent = JSON.stringify(firebaseConfig, null, 2);
+
+        // Initialize Firebase
+        log('Initializing Firebase...', 'info');
+        updateFirebaseStatus('loading');
+
+        setTimeout(() => {
+            if (typeof firebase === 'undefined') {
+                log('❌ Firebase SDK not available!', 'error');
+                updateFirebaseStatus('error');
+            } else {
+                log('✅ Firebase SDK loaded successfully', 'success');
+                
+                try {
+                    if (!firebase.apps.length) {
+                        firebase.initializeApp(firebaseConfig);
+                        log('✅ Firebase initialized with datasell-7b993', 'success');
+                    } else {
+                        log('✅ Firebase already initialized', 'success');
+                    }
+                    updateFirebaseStatus('ready');
+                } catch (error) {
+                    log(`❌ Firebase init error: ${error.message}`, 'error');
+                    updateFirebaseStatus('error');
+                }
+            }
+        }, 1000);
+
+        // Test functions
+        function testFirebaseLoad() {
+            log('Testing Firebase SDK...', 'info');
+            
+            if (typeof firebase === 'undefined') {
+                log('❌ Firebase not available', 'error');
+                return;
+            }
+            
+            log('✅ firebase object exists', 'success');
+            
+            if (typeof firebase.auth !== 'function') {
+                log('❌ firebase.auth not available', 'error');
+                return;
+            }
+            
+            log('✅ firebase.auth function exists', 'success');
+            
+            try {
+                const auth = firebase.auth();
+                log('✅ firebase.auth() returns auth instance', 'success');
+                log(`   Current user: ${auth.currentUser ? auth.currentUser.email : 'None (not signed in)'}`, 'info');
+            } catch (error) {
+                log(`❌ Error getting auth: ${error.message}`, 'error');
+            }
+        }
+
+        function testBackendConnection() {
+            updateBackendStatus('testing');
+            log('Testing backend endpoint...', 'info');
+            
+            fetch('/auth/firebase-google', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ idToken: 'test' })
+            })
+            .then(res => {
+                if (res.status === 401 || res.status === 400) {
+                    log('✅ Backend endpoint exists and responding', 'success');
+                    log(`   Status: ${res.status} (expected - invalid token)', 'info');
+                    updateBackendStatus('ok');
+                    return res.json();
+                } else if (res.status === 500) {
+                    log('⚠️  Backend endpoint exists but returned error 500', 'warning');
+                    updateBackendStatus('error');
+                    return res.json();
+                } else {
+                    log(`✅ Backend endpoint status: ${res.status}`, 'success');
+                    updateBackendStatus('ok');
+                    return res.json();
+                }
+            })
+            .then(data => {
+                document.getElementById('response').textContent = JSON.stringify(data, null, 2);
+                log(`   Response: ${data.error || data.message}`, 'info');
+            })
+            .catch(error => {
+                log(`❌ Backend error: ${error.message}`, 'error');
+                updateBackendStatus('error');
+            });
+        }
+
+        function testSession() {
+            updateSessionStatus('checking');
+            log('Testing session...', 'info');
+            
+            fetch('/api/user')
+            .then(res => res.json())
+            .then(data => {
+                if (data.authenticated) {
+                    log(`✅ Session authenticated: ${data.user.email}`, 'success');
+                    updateSessionStatus('authenticated');
+                } else {
+                    log('ℹ️  No active session', 'info');
+                    updateSessionStatus('unauthenticated');
+                }
+                document.getElementById('response').textContent = JSON.stringify(data, null, 2);
+            })
+            .catch(error => {
+                log(`❌ Session check error: ${error.message}`, 'error');
+                updateSessionStatus('error');
+            });
+        }
+
+        function testSignIn() {
+            log('Starting Google Sign-In test...', 'info');
+            
+            if (typeof firebase === 'undefined') {
+                log('❌ Firebase not available', 'error');
+                return;
+            }
+            
+            try {
+                const provider = new firebase.auth.GoogleAuthProvider();
+                provider.addScope('profile');
+                provider.addScope('email');
+                
+                log('Opening Google Sign-In popup...', 'info');
+                
+                firebase.auth().signInWithPopup(provider)
+                    .then(result => {
+                        log(`✅ Firebase Google Sign-In successful!`, 'success');
+                        log(`   Email: ${result.user.email}`, 'info');
+                        log(`   Name: ${result.user.displayName}`, 'info');
+                        
+                        // Get ID token
+                        return result.user.getIdToken();
+                    })
+                    .then(idToken => {
+                        log('✅ ID token obtained', 'success');
+                        log(`   Token length: ${idToken.length} characters`, 'info');
+                        
+                        // Send to backend
+                        log('Sending token to backend...', 'info');
+                        
+                        return fetch('/auth/firebase-google', {
+                            method: 'POST',
+                            credentials: 'include',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ idToken, isSignup: false })
+                        });
+                    })
+                    .then(res => res.json())
+                    .then(data => {
+                        if (data.success) {
+                            log(`✅ Backend verified user!`, 'success');
+                            log(`   User ID: ${data.userId}`, 'info');
+                            log(`   Email: ${data.email}`, 'info');
+                            log(`   Auth Method: ${data.authMethod}`, 'info');
+                            updateSessionStatus('authenticated');
+                        } else {
+                            log(`❌ Backend error: ${data.error}`, 'error');
+                        }
+                        document.getElementById('response').textContent = JSON.stringify(data, null, 2);
+                    })
+                    .catch(error => {
+                        log(`❌ Sign-in error: ${error.message}`, 'error');
+                    });
+            } catch (error) {
+                log(`❌ Error initiating sign-in: ${error.message}`, 'error');
+            }
+        }
+
+        // Auto-test on load
+        setTimeout(() => {
+            testBackendConnection();
+            testSession();
+        }, 2000);
+    </script>
+</body>
+</html>
