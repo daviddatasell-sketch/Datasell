@@ -498,13 +498,18 @@ body.auth-page {
         </div>
     </div>
 
-    <!-- Simple Google Sign-In - Backend handles Firebase -->
+    <!-- Google Sign-In - Mobile & Desktop compatible -->
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/notyf@3/notyf.min.js"></script>
     <script src="https://accounts.google.com/gsi/client" async defer></script>
 
     <script>
-        // Initialize Google Sign-In with callback
+        // Detect if mobile device
+        function isMobile() {
+            return /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+        }
+
+        // Desktop: Google One Tap / Button callback
         window.handleCredentialResponse = function(response) {
             console.log('✅ Google credential received, verifying...');
             
@@ -523,7 +528,6 @@ body.auth-page {
             .then(data => {
                 if (data.success) {
                     console.log('✅ Authentication successful:', data.email);
-                    // Redirect to dashboard
                     window.location.href = '/';
                 } else {
                     console.error('❌ Authentication failed:', data.error);
@@ -535,28 +539,75 @@ body.auth-page {
                 alert('Error verifying credentials. Please try again.');
             });
         };
+
+        // Mobile: OAuth redirect flow
+        function startMobileGoogleAuth() {
+            const clientId = '503108953382-gk6boqvp22bjaet93e4s4h049gg2tsvg.apps.googleusercontent.com';
+            const redirectUri = window.location.origin + '/auth/google-callback';
+            const scope = encodeURIComponent('openid email profile');
+            const responseType = 'code';
+            const accessType = 'offline';
+            
+            const authUrl = `https://accounts.google.com/o/oauth2/v2/auth?` +
+                `client_id=${clientId}&` +
+                `redirect_uri=${encodeURIComponent(redirectUri)}&` +
+                `response_type=${responseType}&` +
+                `scope=${scope}&` +
+                `access_type=${accessType}&` +
+                `prompt=consent`;
+            
+            console.log('📱 Mobile: Starting OAuth redirect flow');
+            window.location.href = authUrl;
+        }
         
         window.onload = function() {
             try {
-                google.accounts.id.initialize({
-                    client_id: '503108953382-gk6boqvp22bjaet93e4s4h049gg2tsvg.apps.googleusercontent.com',
-                    callback: handleCredentialResponse,
-                    auto_select: false
-                });
-                
-                // Render sign-in button
                 const googleBtn = document.getElementById('googleSignInBtn');
-                if (googleBtn) {
+                if (!googleBtn) return;
+
+                // Check if this is mobile
+                if (isMobile()) {
+                    console.log('📱 Mobile detected - using OAuth redirect flow');
+                    // For mobile, redirect to Google OAuth on button click
+                    googleBtn.addEventListener('click', function(e) {
+                        e.preventDefault();
+                        startMobileGoogleAuth();
+                    });
+                    // Style the button for mobile
+                    googleBtn.style.display = 'block';
+                    googleBtn.style.padding = '12px';
+                    googleBtn.style.backgroundColor = '#ffffff';
+                    googleBtn.style.color = '#202124';
+                    googleBtn.style.border = '1px solid #dadce0';
+                    googleBtn.style.borderRadius = '4px';
+                    googleBtn.style.cursor = 'pointer';
+                    googleBtn.style.fontSize = '14px';
+                    googleBtn.style.fontWeight = '500';
+                    googleBtn.innerHTML = 'Continue with Google';
+                } else {
+                    console.log('🖥️ Desktop detected - using Google Sign-In');
+                    // Desktop: use Google's library with One Tap
+                    google.accounts.id.initialize({
+                        client_id: '503108953382-gk6boqvp22bjaet93e4s4h049gg2tsvg.apps.googleusercontent.com',
+                        callback: handleCredentialResponse,
+                        auto_select: false
+                    });
+                    
+                    // Render button with outline theme
                     google.accounts.id.renderButton(googleBtn, {
-                        theme: 'filled_blue',
+                        theme: 'outline',
                         size: 'large',
-                        width: '100%'
+                        width: '100%',
+                        text: 'continue_with'
                     });
                 }
+                
                 console.log('✅ Google Sign-In initialized');
             } catch (error) {
                 console.error('❌ Google Sign-In initialization failed:', error);
-                document.getElementById('googleSignInBtn').style.display = 'none';
+                if (document.getElementById('googleSignInBtn')) {
+                    document.getElementById('googleSignInBtn').style.display = 'none';
+                }
             }
         };
     </script>
