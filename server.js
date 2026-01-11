@@ -1828,6 +1828,10 @@ app.get('/auth/google/callback', async (req, res) => {
     }
 
     // Exchange code for token
+    // IMPORTANT: The redirect_uri must match EXACTLY what was sent in the initial OAuth request
+    const redirectUri = (process.env.GOOGLE_OAUTH_CALLBACK_URL || process.env.BASE_URL + '/auth/google/callback').replace(/\/$/, '');
+    console.log(`🔑 Exchanging auth code for token. Using redirect_uri: ${redirectUri}`);
+    
     const tokenResponse = await fetch('https://oauth2.googleapis.com/token', {
       method: 'POST',
       headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
@@ -1835,7 +1839,7 @@ app.get('/auth/google/callback', async (req, res) => {
         code: code,
         client_id: process.env.GOOGLE_OAUTH_CLIENT_ID,
         client_secret: process.env.GOOGLE_OAUTH_CLIENT_SECRET,
-        redirect_uri: process.env.BASE_URL || 'http://localhost:3000',
+        redirect_uri: redirectUri,
         grant_type: 'authorization_code'
       }).toString()
     });
