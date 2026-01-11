@@ -1565,26 +1565,14 @@ app.get('/logout', (req, res) => {
   });
 });
 
-// ============================================
-// Debug endpoint to verify OAuth configuration
-app.get('/debug/oauth-config', (req, res) => {
-  res.json({
-    NODE_ENV: process.env.NODE_ENV,
-    BASE_URL: process.env.BASE_URL,
-    DOMAIN: process.env.DOMAIN,
-    GOOGLE_OAUTH_CALLBACK_URL: process.env.GOOGLE_OAUTH_CALLBACK_URL,
-    redirectUriBeingUsed: (process.env.GOOGLE_OAUTH_CALLBACK_URL || process.env.BASE_URL + '/auth/google/callback').replace(/\/$/, '')
-  });
-});
-
-// Google OAuth Routes
+// Firebase Google Sign-In Routes
 // ============================================
 
 /**
- * POST /auth/google/verify
- * Verify Google ID token and create/login user
+ * POST /auth/firebase-google
+ * Verify Firebase Google ID token and create/login user
  */
-app.post('/auth/google/verify', async (req, res) => {
+app.post('/auth/firebase-google', async (req, res) => {
   try {
     const { idToken, isSignup } = req.body;
 
@@ -1797,156 +1785,7 @@ app.post('/auth/google/link-phone', requireAuth, async (req, res) => {
   }
 });
 
-/**
- * GET /auth/google/callback
- * Handles OAuth callback from Google (after user selects account in popup)
- */
-app.get('/auth/google/callback', async (req, res) => {
-  try {
-    const { code, state, error } = req.query;
 
-    // Check for errors from Google
-    if (error) {
-      console.log(`❌ Google OAuth error: ${error}`);
-      return res.send(`
-        <html>
-          <body style="font-family: Arial, sans-serif; display: flex; justify-content: center; align-items: center; height: 100vh; margin: 0; background: #f5f5f5;">
-            <div style="text-align: center; background: white; padding: 40px; border-radius: 10px; box-shadow: 0 2px 10px rgba(0,0,0,0.1);">
-              <h2 style="color: #d32f2f; margin-top: 0;">Authorization Failed</h2>
-              <p>Error: ${error}</p>
-              <p>Please close this window and try again.</p>
-              <button onclick="window.close()" style="padding: 10px 20px; background: #1976d2; color: white; border: none; border-radius: 5px; cursor: pointer;">Close</button>
-            </div>
-          </body>
-        </html>
-      `);
-    }
-
-    // Authorization code received
-    if (!code) {
-      return res.send(`
-        <html>
-          <body style="font-family: Arial, sans-serif; display: flex; justify-content: center; align-items: center; height: 100vh; margin: 0; background: #f5f5f5;">
-            <div style="text-align: center; background: white; padding: 40px; border-radius: 10px; box-shadow: 0 2px 10px rgba(0,0,0,0.1);">
-              <h2 style="color: #d32f2f; margin-top: 0;">Invalid Request</h2>
-              <p>Authorization code not received.</p>
-              <p>Please close this window and try again.</p>
-              <button onclick="window.close()" style="padding: 10px 20px; background: #1976d2; color: white; border: none; border-radius: 5px; cursor: pointer;">Close</button>
-            </div>
-          </body>
-        </html>
-      `);
-    }
-
-    // Exchange code for token
-    // IMPORTANT: The redirect_uri must match EXACTLY what was sent in the initial OAuth request
-    const redirectUri = (process.env.GOOGLE_OAUTH_CALLBACK_URL || process.env.BASE_URL + '/auth/google/callback').replace(/\/$/, '');
-    console.log(`🔑 Exchanging auth code for token.`);
-    console.log(`   - GOOGLE_OAUTH_CALLBACK_URL: ${process.env.GOOGLE_OAUTH_CALLBACK_URL}`);
-    console.log(`   - BASE_URL: ${process.env.BASE_URL}`);
-    console.log(`   - Final redirect_uri: ${redirectUri}`);
-    
-    const tokenResponse = await fetch('https://oauth2.googleapis.com/token', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-      body: new URLSearchParams({
-        code: code,
-        client_id: process.env.GOOGLE_OAUTH_CLIENT_ID,
-        client_secret: process.env.GOOGLE_OAUTH_CLIENT_SECRET,
-        redirect_uri: redirectUri,
-        grant_type: 'authorization_code'
-      }).toString()
-    });
-
-    const tokenData = await tokenResponse.json();
-
-    if (tokenData.error) {
-      console.log(`❌ Token exchange error: ${tokenData.error}`);
-      throw new Error(tokenData.error_description || 'Failed to exchange authorization code');
-    }
-
-    if (!tokenData.id_token) {
-      console.log('❌ No ID token received from Google');
-      throw new Error('Failed to get ID token');
-    }
-
-    // Verify the ID token using Firebase
-    const decodedToken = await admin.auth().verifyIdToken(tokenData.id_token);
-    const { email, name, picture, uid } = decodedToken;
-
-    // Store session data
-    req.session.user = {
-      uid: uid,
-      email: email,
-      name: name,
-      picture: picture,
-      authMethod: 'google'
-    };
-
-    // Find or create user in database
-    const userRef = admin.database().ref(`users/${uid}`);
-    const userSnapshot = await userRef.once('value');
-
-    if (!userSnapshot.exists()) {
-      // New user - create account
-      await userRef.set({
-        uid: uid,
-        email: email,
-        name: name || 'User',
-        profilePicture: picture,
-        authMethod: 'google',
-        googleLinked: true,
-        createdAt: new Date().toISOString(),
-        lastLogin: new Date().toISOString(),
-        phone: null
-      });
-
-      console.log(`✅ New user created via Google: ${email}`);
-    } else {
-      // Existing user - update last login
-      await userRef.update({
-        lastLogin: new Date().toISOString(),
-        googleLinked: true
-      });
-
-      console.log(`✅ User logged in via Google: ${email}`);
-    }
-
-    // Return success page that closes popup
-    return res.send(`
-      <html>
-        <body style="font-family: Arial, sans-serif; display: flex; justify-content: center; align-items: center; height: 100vh; margin: 0; background: #f5f5f5;">
-          <div style="text-align: center; background: white; padding: 40px; border-radius: 10px; box-shadow: 0 2px 10px rgba(0,0,0,0.1);">
-            <h2 style="color: #4caf50; margin-top: 0;">✓ Signed In Successfully</h2>
-            <p>Welcome, ${name || 'User'}!</p>
-            <p>Redirecting you...</p>
-            <script>
-              setTimeout(() => {
-                window.opener.location.href = '/';
-                window.close();
-              }, 1000);
-            </script>
-          </div>
-        </body>
-      </html>
-    `);
-
-  } catch (error) {
-    console.error('❌ OAuth callback error:', error);
-    return res.send(`
-      <html>
-        <body style="font-family: Arial, sans-serif; display: flex; justify-content: center; align-items: center; height: 100vh; margin: 0; background: #f5f5f5;">
-          <div style="text-align: center; background: white; padding: 40px; border-radius: 10px; box-shadow: 0 2px 10px rgba(0,0,0,0.1);">
-            <h2 style="color: #d32f2f; margin-top: 0;">Authentication Error</h2>
-            <p>${error.message}</p>
-            <p>Please close this window and try again.</p>
-            <button onclick="window.close()" style="padding: 10px 20px; background: #1976d2; color: white; border: none; border-radius: 5px; cursor: pointer;">Close</button>
-          </div>
-        </body>
-      </html>
-    `);
-  }
-});
 
 /**
  * GET / (root) - Also handle OAuth callback when redirect is to root
