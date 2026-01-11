@@ -1760,11 +1760,18 @@ app.get('/auth/google-callback', async (req, res) => {
 
     // Exchange authorization code for tokens
     const tokenUrl = 'https://oauth2.googleapis.com/token';
+    const clientSecret = process.env.GOOGLE_OAUTH_CLIENT_SECRET;
+    
+    if (!clientSecret || clientSecret === 'YOUR_CLIENT_SECRET_HERE') {
+      console.error('❌ Google OAuth Client Secret not configured');
+      return res.redirect(`/login?error=${encodeURIComponent('Server not configured for OAuth')}`);
+    }
+
     const tokenPayload = {
       code: code,
       client_id: process.env.GOOGLE_OAUTH_CLIENT_ID || '503108953382-gk6boqvp22bjaet93e4s4h049gg2tsvg.apps.googleusercontent.com',
-      client_secret: process.env.GOOGLE_OAUTH_CLIENT_SECRET,
-      redirect_uri: process.env.BASE_URL + '/auth/google-callback',
+      client_secret: clientSecret,
+      redirect_uri: 'https://datasell.store/auth/google-callback',
       grant_type: 'authorization_code'
     };
 
@@ -1780,32 +1787,40 @@ app.get('/auth/google-callback', async (req, res) => {
     if (!tokenResponse.ok) {
       const errorData = await tokenResponse.json();
       console.error('❌ Token exchange failed:', errorData);
-      return res.redirect(`/login?error=${encodeURIComponent('Failed to exchange token')}`);
+      return res.redirect(`/login?error=${encodeURIComponent('Failed to exchange token: ' + JSON.stringify(errorData))}`);
     }
 
     const tokenData = await tokenResponse.json();
-    const { id_token } = tokenData;
+    const { id_token, access_token } = tokenData;
 
     if (!id_token) {
       console.error('❌ No ID token in response');
       return res.redirect(`/login?error=${encodeURIComponent('No ID token received')}`);
     }
 
-    console.log('✅ ID token received, verifying with Firebase...');
+    console.log('✅ ID token received, verifying with Google...');
 
-    // Verify the ID token using Firebase Admin SDK
-    let decodedToken;
-    try {
-      decodedToken = await admin.auth().verifyIdToken(id_token);
-      console.log('✅ ID token verified:', decodedToken.email);
-    } catch (verifyError) {
-      console.error('❌ Firebase ID token verification failed:', verifyError);
+    // Verify the ID token with Google's tokeninfo endpoint
+    const verifyUrl = `https://oauth2.googleapis.com/tokeninfo?id_token=${id_token}`;
+    const verifyResponse = await fetch(verifyUrl);
+    const verifyData = await verifyResponse.json();
+
+    if (!verifyResponse.ok || verifyData.error) {
+      console.error('❌ Google ID token verification failed:', verifyData);
       return res.redirect(`/login?error=${encodeURIComponent('Token verification failed')}`);
     }
 
-    const googleUserId = decodedToken.uid;
-    const userEmail = decodedToken.email;
-    const name = decodedToken.name || 'Google User';
+    // Verify the token is for our app
+    if (verifyData.aud !== (process.env.GOOGLE_OAUTH_CLIENT_ID || '503108953382-gk6boqvp22bjaet93e4s4h049gg2tsvg.apps.googleusercontent.com')) {
+      console.error('❌ Token audience mismatch');
+      return res.redirect(`/login?error=${encodeURIComponent('Token audience mismatch')}`);
+    }
+
+    const userEmail = verifyData.email;
+    const name = verifyData.name || 'Google User';
+    const googleUserId = verifyData.sub;
+
+    console.log('✅ Token verified for:', userEmail);
 
     // Check if user exists in database
     let userId, authMethod, isNewUser = false;
@@ -1818,7 +1833,7 @@ app.get('/auth/google-callback', async (req, res) => {
         isNewUser = false;
         console.log('✅ Existing user found:', userEmail);
       } else {
-        // Create new user
+        // Create new user in database
         const newUser = new User({
           email: userEmail,
           displayName: name,
@@ -1834,7 +1849,7 @@ app.get('/auth/google-callback', async (req, res) => {
         userId = newUser._id.toString();
         authMethod = 'google';
         isNewUser = true;
-        console.log('✅ New user created:', userEmail);
+        console.log('✅ New user created in database:', userEmail, 'ID:', userId);
       }
 
       // Update last login
@@ -1853,7 +1868,7 @@ app.get('/auth/google-callback', async (req, res) => {
 
     } catch (dbError) {
       console.error('❌ Database error:', dbError);
-      return res.redirect(`/login?error=${encodeURIComponent('Database error during authentication')}`);
+      return res.redirect(`/login?error=${encodeURIComponent('Database error: ' + dbError.message)}`);
     }
 
   } catch (error) {
