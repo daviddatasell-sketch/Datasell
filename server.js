@@ -1566,6 +1566,17 @@ app.get('/logout', (req, res) => {
 });
 
 // ============================================
+// Debug endpoint to verify OAuth configuration
+app.get('/debug/oauth-config', (req, res) => {
+  res.json({
+    NODE_ENV: process.env.NODE_ENV,
+    BASE_URL: process.env.BASE_URL,
+    DOMAIN: process.env.DOMAIN,
+    GOOGLE_OAUTH_CALLBACK_URL: process.env.GOOGLE_OAUTH_CALLBACK_URL,
+    redirectUriBeingUsed: (process.env.GOOGLE_OAUTH_CALLBACK_URL || process.env.BASE_URL + '/auth/google/callback').replace(/\/$/, '')
+  });
+});
+
 // Google OAuth Routes
 // ============================================
 
@@ -1830,7 +1841,10 @@ app.get('/auth/google/callback', async (req, res) => {
     // Exchange code for token
     // IMPORTANT: The redirect_uri must match EXACTLY what was sent in the initial OAuth request
     const redirectUri = (process.env.GOOGLE_OAUTH_CALLBACK_URL || process.env.BASE_URL + '/auth/google/callback').replace(/\/$/, '');
-    console.log(`🔑 Exchanging auth code for token. Using redirect_uri: ${redirectUri}`);
+    console.log(`🔑 Exchanging auth code for token.`);
+    console.log(`   - GOOGLE_OAUTH_CALLBACK_URL: ${process.env.GOOGLE_OAUTH_CALLBACK_URL}`);
+    console.log(`   - BASE_URL: ${process.env.BASE_URL}`);
+    console.log(`   - Final redirect_uri: ${redirectUri}`);
     
     const tokenResponse = await fetch('https://oauth2.googleapis.com/token', {
       method: 'POST',

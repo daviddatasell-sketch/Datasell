@@ -705,6 +705,13 @@ body.auth-page {
                 
                 // Remove trailing slash and append callback path
                 const redirectUri = baseUrl.replace(/\/$/, '') + '/auth/google/callback';
+                console.log('DEBUG OAuth:', {
+                  'window.location.origin': window.location.origin,
+                  'window.location.protocol': window.location.protocol,
+                  'window.location.host': window.location.host,
+                  'calculated baseUrl': baseUrl,
+                  'final redirectUri': redirectUri
+                });
                 console.log('OAuth redirect_uri:', redirectUri);
                 
                 const scope = encodeURIComponent('openid email profile');

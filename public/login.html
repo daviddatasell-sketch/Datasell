@@ -525,6 +525,12 @@ body.auth-page {
             // Get domain - try window.location first, fallback to hardcoded production domain
             let baseUrl = window.location.origin || (window.location.protocol + '//' + window.location.host) || 'https://datasell.store';
             
+            console.log('DEBUG OAuth:', {
+              'window.location.origin': window.location.origin,
+              'window.location.protocol': window.location.protocol,
+              'window.location.host': window.location.host,
+              'calculated baseUrl': baseUrl
+            });
             console.log('Using baseUrl:', baseUrl);
             
             // Remove trailing slash and append callback path
