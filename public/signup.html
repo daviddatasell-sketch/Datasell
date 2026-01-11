@@ -686,8 +686,8 @@ body.auth-page {
         document.getElementById('googleSignUpBtn').addEventListener('click', function() {
             // Open Google OAuth popup
             const clientId = '503108953382-uk7ks61h051bot7kkv8m1ml9uhla8rkq.apps.googleusercontent.com';
-            // Use current domain dynamically - works for both localhost and production
-            const baseUrl = window.location.origin;
+            // Use current domain dynamically with fallback for older browsers
+            const baseUrl = window.location.origin || (window.location.protocol + '//' + window.location.host);
             // Important: Append the callback path - must match Google Cloud Console configuration
             const redirectUri = encodeURIComponent(baseUrl.replace(/\/$/, '') + '/auth/google/callback');
             const scope = encodeURIComponent('openid email profile');
