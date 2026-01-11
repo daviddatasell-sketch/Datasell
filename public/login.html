@@ -519,40 +519,22 @@ body.auth-page {
                 console.log('BUTTON CLICKED!');
                 e.preventDefault();
                 
-                // Debug logging
-                console.log('=== GOOGLE OAUTH DEBUG ===');
-            console.log('window:', window);
-            console.log('window.location:', window.location);
-            console.log('location object keys:', Object.keys(window.location));
-            
-            // Try different ways to get the domain
-            const method1 = window.location.origin;
-            const method2 = window.location.protocol + '//' + window.location.host;
-            const method3 = window.location.protocol + '//' + window.location.hostname + (window.location.port ? ':' + window.location.port : '');
-            const method4 = document.location.origin;
-            const method5 = document.location.protocol + '//' + document.location.host;
-            
-            console.log('method1 (window.location.origin):', method1);
-            console.log('method2 (protocol + host):', method2);
-            console.log('method3 (protocol + hostname + port):', method3);
-            console.log('method4 (document.location.origin):', method4);
-            console.log('method5 (document.location protocol + host):', method5);
-            
-            // Open Google OAuth popup
+                // Open Google OAuth popup
             const clientId = '503108953382-uk7ks61h051bot7kkv8m1ml9uhla8rkq.apps.googleusercontent.com';
-            // Use current domain dynamically with fallback for older browsers
-            const baseUrl = window.location.origin || window.location.protocol + '//' + window.location.host || document.location.origin;
             
-            console.log('Final baseUrl being used:', baseUrl);
+            // Get domain - try window.location first, fallback to hardcoded production domain
+            let baseUrl = window.location.origin || (window.location.protocol + '//' + window.location.host) || 'https://datasell.store';
             
-            // Important: Append the callback path - must match Google Cloud Console configuration
-            const redirectUri = encodeURIComponent(baseUrl.replace(/\/$/, '') + '/auth/google/callback');
-            console.log('Final redirectUri:', redirectUri);
+            console.log('Using baseUrl:', baseUrl);
+            
+            // Remove trailing slash and append callback path
+            const redirectUri = baseUrl.replace(/\/$/, '') + '/auth/google/callback';
+            console.log('OAuth redirect_uri:', redirectUri);
             const scope = encodeURIComponent('openid email profile');
             const responseType = 'code';
             const prompt = 'select_account';
             
-            const googleAuthUrl = `https://accounts.google.com/o/oauth2/v2/auth?client_id=${clientId}&redirect_uri=${redirectUri}&response_type=${responseType}&scope=${scope}&prompt=${prompt}`;
+            const googleAuthUrl = `https://accounts.google.com/o/oauth2/v2/auth?client_id=${clientId}&redirect_uri=${encodeURIComponent(redirectUri)}&response_type=${responseType}&scope=${scope}&prompt=${prompt}`;
             
             // Check if mobile device
             const isMobile = /iPhone|iPad|Android|webOS|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
