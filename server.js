@@ -1739,6 +1739,130 @@ app.post('/auth/firebase-google', async (req, res) => {
 });
 
 /**
+ * GET /auth/google-callback
+ * OAuth callback for mobile redirect flow
+ * Exchanges authorization code for ID token and handles authentication
+ */
+app.get('/auth/google-callback', async (req, res) => {
+  try {
+    const { code, error, state } = req.query;
+
+    // Check for errors from Google
+    if (error) {
+      console.error('❌ Google OAuth error:', error);
+      return res.redirect(`/login?error=${encodeURIComponent(error)}`);
+    }
+
+    if (!code) {
+      console.error('❌ No authorization code received');
+      return res.redirect(`/login?error=${encodeURIComponent('No authorization code received')}`);
+    }
+
+    // Exchange authorization code for tokens
+    const tokenUrl = 'https://oauth2.googleapis.com/token';
+    const tokenPayload = {
+      code: code,
+      client_id: process.env.GOOGLE_OAUTH_CLIENT_ID || '503108953382-gk6boqvp22bjaet93e4s4h049gg2tsvg.apps.googleusercontent.com',
+      client_secret: process.env.GOOGLE_OAUTH_CLIENT_SECRET,
+      redirect_uri: process.env.BASE_URL + '/auth/google-callback',
+      grant_type: 'authorization_code'
+    };
+
+    console.log('🔄 Exchanging authorization code for tokens...');
+    const tokenResponse = await fetch(tokenUrl, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/x-www-form-urlencoded',
+      },
+      body: new URLSearchParams(tokenPayload)
+    });
+
+    if (!tokenResponse.ok) {
+      const errorData = await tokenResponse.json();
+      console.error('❌ Token exchange failed:', errorData);
+      return res.redirect(`/login?error=${encodeURIComponent('Failed to exchange token')}`);
+    }
+
+    const tokenData = await tokenResponse.json();
+    const { id_token } = tokenData;
+
+    if (!id_token) {
+      console.error('❌ No ID token in response');
+      return res.redirect(`/login?error=${encodeURIComponent('No ID token received')}`);
+    }
+
+    console.log('✅ ID token received, verifying with Firebase...');
+
+    // Verify the ID token using Firebase Admin SDK
+    let decodedToken;
+    try {
+      decodedToken = await admin.auth().verifyIdToken(id_token);
+      console.log('✅ ID token verified:', decodedToken.email);
+    } catch (verifyError) {
+      console.error('❌ Firebase ID token verification failed:', verifyError);
+      return res.redirect(`/login?error=${encodeURIComponent('Token verification failed')}`);
+    }
+
+    const googleUserId = decodedToken.uid;
+    const userEmail = decodedToken.email;
+    const name = decodedToken.name || 'Google User';
+
+    // Check if user exists in database
+    let userId, authMethod, isNewUser = false;
+    
+    try {
+      const existingUser = await User.findOne({ email: userEmail });
+      if (existingUser) {
+        userId = existingUser._id.toString();
+        authMethod = existingUser.authMethod || 'google';
+        isNewUser = false;
+        console.log('✅ Existing user found:', userEmail);
+      } else {
+        // Create new user
+        const newUser = new User({
+          email: userEmail,
+          displayName: name,
+          authMethod: 'google',
+          googleId: googleUserId,
+          verified: true,
+          phone: '',
+          createdAt: new Date(),
+          lastLogin: new Date()
+        });
+        
+        await newUser.save();
+        userId = newUser._id.toString();
+        authMethod = 'google';
+        isNewUser = true;
+        console.log('✅ New user created:', userEmail);
+      }
+
+      // Update last login
+      await User.findByIdAndUpdate(userId, { lastLogin: new Date() });
+
+      // Create session
+      req.session.userId = userId;
+      req.session.email = userEmail;
+      req.session.displayName = name;
+      req.session.authMethod = authMethod;
+
+      console.log('✅ Session created for user:', userEmail);
+
+      // Redirect to dashboard/home
+      return res.redirect('/');
+
+    } catch (dbError) {
+      console.error('❌ Database error:', dbError);
+      return res.redirect(`/login?error=${encodeURIComponent('Database error during authentication')}`);
+    }
+
+  } catch (error) {
+    console.error('❌ OAuth callback error:', error);
+    res.redirect(`/login?error=${encodeURIComponent('Authentication failed: ' + error.message)}`);
+  }
+});
+
+/**
  * POST /auth/google/link-phone
  * Link phone number to Google OAuth account (for new users)
  */
