@@ -57,10 +57,15 @@ app.set('trust proxy', 1);
 
 // Email transporter configuration for password reset
 const emailTransporter = nodemailer.createTransport({
-  service: 'gmail',
+  host: 'smtp.gmail.com',
+  port: 587,
+  secure: false, // Use TLS, not SSL
   auth: {
     user: process.env.EMAIL_USER,
     pass: process.env.EMAIL_PASSWORD
+  },
+  tls: {
+    rejectUnauthorized: false
   }
 });
 
@@ -80,6 +85,15 @@ async function sendPasswordResetEmail(email, resetLink, userName = 'User') {
   try {
     console.log(`📨 Attempting to send password reset email to: ${email}`);
     console.log(`📨 Using sender: ${process.env.EMAIL_USER}`);
+    console.log(`📨 Email transporter ready: checking connection...`);
+    
+    // Verify transporter connection before sending
+    try {
+      await emailTransporter.verify();
+      console.log('✅ Email transporter verified and ready');
+    } catch (verifyError) {
+      console.error('❌ Email transporter verification failed:', verifyError.message);
+    }
     
     const mailOptions = {
       from: `${process.env.EMAIL_FROM_NAME || 'DataSell'} <${process.env.EMAIL_USER}>`,
@@ -108,16 +122,24 @@ async function sendPasswordResetEmail(email, resetLink, userName = 'User') {
       `
     };
 
+    console.log(`📬 Sending email with options:`, {
+      from: mailOptions.from,
+      to: mailOptions.to,
+      subject: mailOptions.subject
+    });
+
     const info = await emailTransporter.sendMail(mailOptions);
     console.log('✅ Password reset email sent successfully to:', email);
     console.log('📧 Email response:', info.response);
+    console.log('📧 Message ID:', info.messageId);
     return true;
   } catch (error) {
     console.error('❌ EMAIL SEND FAILED - Full Error:', {
       message: error.message,
       code: error.code,
       command: error.command,
-      response: error.response
+      response: error.response,
+      stack: error.stack
     });
     return false;
   }
@@ -1087,6 +1109,54 @@ app.post('/api/login', async (req, res) => {
     res.status(401).json({ 
       success: false, 
       error: 'Invalid credentials' 
+    });
+  }
+});
+
+// Test Email Configuration endpoint (development only)
+app.post('/api/test-email', async (req, res) => {
+  if (process.env.NODE_ENV !== 'development') {
+    return res.status(403).json({ success: false, error: 'This endpoint is only available in development' });
+  }
+  
+  try {
+    const { testEmail } = req.body;
+    
+    if (!testEmail) {
+      return res.status(400).json({ success: false, error: 'Test email is required' });
+    }
+
+    console.log('🧪 Testing email configuration...');
+    console.log('📧 Email service:', process.env.EMAIL_USER);
+    console.log('📧 Test recipient:', testEmail);
+
+    const testMailOptions = {
+      from: `${process.env.EMAIL_FROM_NAME || 'DataSell'} <${process.env.EMAIL_USER}>`,
+      to: testEmail,
+      subject: 'Test Email - DataSell',
+      html: `<h2>Email Configuration Test</h2><p>If you received this email, your email configuration is working correctly!</p><p>Time sent: ${new Date().toISOString()}</p>`
+    };
+
+    const info = await emailTransporter.sendMail(testMailOptions);
+    
+    res.json({ 
+      success: true, 
+      message: 'Test email sent successfully!',
+      details: {
+        messageId: info.messageId,
+        response: info.response,
+        sentTo: testEmail
+      }
+    });
+  } catch (error) {
+    console.error('❌ Test email failed:', error);
+    res.status(500).json({ 
+      success: false, 
+      error: 'Failed to send test email',
+      details: {
+        message: error.message,
+        code: error.code
+      }
     });
   }
 });
