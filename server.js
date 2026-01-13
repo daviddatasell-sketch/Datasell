@@ -87,9 +87,14 @@ async function sendPasswordResetEmail(email, resetLink, userName = 'User') {
     console.log(`📨 Using sender: ${process.env.EMAIL_USER}`);
     console.log(`📨 Email transporter ready: checking connection...`);
     
-    // Verify transporter connection before sending
+    // Verify transporter connection before sending (convert callback to promise)
     try {
-      await emailTransporter.verify();
+      await new Promise((resolve, reject) => {
+        emailTransporter.verify((error, success) => {
+          if (error) reject(error);
+          else resolve(success);
+        });
+      });
       console.log('✅ Email transporter verified and ready');
     } catch (verifyError) {
       console.error('❌ Email transporter verification failed:', verifyError.message);
