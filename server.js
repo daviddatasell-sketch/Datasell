@@ -1,0 +1,4169 @@
+require('dotenv').config();
+
+// Log startup immediately
+console.log('═══════════════════════════════════════════════════════════');
+console.log('🔥 DATASELL SERVER STARTUP - VERSION 1.0.1');
+console.log('═══════════════════════════════════════════════════════════');
+console.log(`⏰ Time: ${new Date().toISOString()}`);
+console.log(`📝 Node Version: ${process.version}`);
+console.log(`🌍 Environment: ${process.env.NODE_ENV || 'development'}`);
+console.log('🔴 NOTE: DATAMART SYNC IS DISABLED FOR STABILITY');
+console.log('═══════════════════════════════════════════════════════════\n');
+
+// Check required environment variables
+const requiredEnvVars = [
+  'FIREBASE_API_KEY',
+  'FIREBASE_AUTH_DOMAIN',
+  'FIREBASE_DATABASE_URL',
+  'FIREBASE_PROJECT_ID',
+  'FIREBASE_STORAGE_BUCKET',
+  'FIREBASE_MESSAGING_SENDER_ID',
+  'FIREBASE_APP_ID',
+  'FIREBASE_PRIVATE_KEY_ID',
+  'FIREBASE_PRIVATE_KEY',
+  'FIREBASE_CLIENT_EMAIL',
+  'FIREBASE_CLIENT_ID',
+  'FIREBASE_CLIENT_CERT_URL'
+];
+
+console.log('🔍 Checking environment variables...');
+const missingVars = requiredEnvVars.filter(envVar => !process.env[envVar]);
+if (missingVars.length > 0) {
+  console.warn('⚠️  WARNING: Missing environment variables:', missingVars);
+  console.warn('ℹ️  Make sure these are set in Render dashboard under Environment settings');
+} else {
+  console.log('✅ All required environment variables are present');
+}
+
+const express = require('express');
+const path = require('path');
+const fs = require('fs');
+const admin = require('firebase-admin');
+const axios = require('axios');
+const session = require('express-session');
+const bcrypt = require('bcryptjs');
+const cors = require('cors');
+const nodemailer = require('nodemailer');
+const { validatePhoneSignup, validatePhoneOrder, logBlockedPhoneAttempt } = require('./phone-blocking-system');
+const { validateGhanianPhone, toInternationalFormat } = require('./ghana-phone-validator');
+// rate limiting removed per request
+
+const app = express();
+const PORT = process.env.PORT || 3000;
+
+// Trust proxy for Render deployment (needed for correct IP addresses and HTTPS)
+// Render uses a reverse proxy, so we need to trust it
+app.set('trust proxy', 1);
+
+// Email transporter configuration for password reset
+const emailTransporter = nodemailer.createTransport({
+  service: 'gmail',
+  auth: {
+    user: process.env.EMAIL_USER,
+    pass: process.env.EMAIL_PASSWORD
+  }
+});
+
+// Verify email configuration on startup
+if (process.env.EMAIL_USER && process.env.EMAIL_PASSWORD) {
+  emailTransporter.verify((error, success) => {
+    if (error) {
+      console.log('⚠️ Email configuration issue:', error.message);
+    } else {
+      console.log('✅ Email service ready');
+    }
+  });
+}
+
+// Function to send password reset email
+async function sendPasswordResetEmail(email, resetLink, userName = 'User') {
+  try {
+    console.log(`📨 Attempting to send password reset email to: ${email}`);
+    console.log(`📨 Using sender: ${process.env.EMAIL_USER}`);
+    
+    const mailOptions = {
+      from: `${process.env.EMAIL_FROM_NAME || 'DataSell'} <${process.env.EMAIL_USER}>`,
+      to: email,
+      subject: 'Password Reset Request - DataSell',
+      html: `
+        <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+          <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 20px; border-radius: 5px 5px 0 0;">
+            <h2 style="margin: 0;">Password Reset Request</h2>
+          </div>
+          <div style="background-color: #f9f9f9; padding: 20px; border: 1px solid #ddd; border-radius: 0 0 5px 5px;">
+            <p>Hello ${userName},</p>
+            <p>We received a request to reset the password for your DataSell account. If you did not make this request, please ignore this email.</p>
+            <p>To reset your password, click the button below:</p>
+            <div style="text-align: center; margin: 30px 0;">
+              <a href="${resetLink}" style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 12px 30px; text-decoration: none; border-radius: 5px; display: inline-block; font-weight: bold;">Reset Password</a>
+            </div>
+            <p>Or copy and paste this link in your browser:</p>
+            <p style="word-break: break-all; color: #666; font-size: 12px;"><code>${resetLink}</code></p>
+            <p style="color: #999; font-size: 12px;">This link will expire in 1 hour.</p>
+            <hr style="border: none; border-top: 1px solid #ddd; margin: 20px 0;">
+            <p style="color: #999; font-size: 12px;">If you didn't request this, your account is still secure. The link will expire automatically.</p>
+            <p style="color: #999; font-size: 12px;">© 2026 DataSell. All rights reserved.</p>
+          </div>
+        </div>
+      `
+    };
+
+    const info = await emailTransporter.sendMail(mailOptions);
+    console.log('✅ Password reset email sent successfully to:', email);
+    console.log('📧 Email response:', info.response);
+    return true;
+  } catch (error) {
+    console.error('❌ EMAIL SEND FAILED - Full Error:', {
+      message: error.message,
+      code: error.code,
+      command: error.command,
+      response: error.response
+    });
+    return false;
+  }
+}
+
+// mNotify SMS configuration
+const MNOTIFY_API_KEY = process.env.MNOTIFY_API_KEY || '8QZ7zFXx1iFXvRYnDOmoyUabC';
+const MNOTIFY_ENDPOINT = 'https://api.mnotify.com/api/sms/quick';
+
+async function sendSmsToUser(userId, phoneFallback, message) {
+  try {
+    const userSnap = await admin.database().ref(`users/${userId}`).once('value');
+    const user = userSnap.val() || {};
+    const phone = (user.phone || user.phoneNumber || phoneFallback || '').toString();
+    if (!phone || phone.length < 8) {
+      console.log('SMS not sent: no valid phone for user', userId);
+      return;
+    }
+
+    const url = `${MNOTIFY_ENDPOINT}?key=${MNOTIFY_API_KEY}`;
+    const payload = {
+      recipient: [phone],
+      sender: 'DataSell',
+      message,
+      is_schedule: false,
+      schedule_date: ''
+    };
+
+    const resp = await axios.post(url, payload, { headers: { 'Content-Type': 'application/json' } });
+    console.log('📩 SMS sent to', phone, 'response:', resp.data);
+  } catch (err) {
+    console.error('❌ SMS send error for user', userId, err?.response?.data || err.message || err);
+  }
+}
+console.log('Loaded environment variables:', process.env);
+
+// Initialize Firebase Admin SYNCHRONOUSLY (required before using admin.database())
+console.log('🔄 Initializing Firebase Admin (CRITICAL - must happen first)...');
+let firebaseInitialized = false;
+try {
+  if (!admin.apps.length) {
+    const serviceAccount = {
+      type: "service_account",
+      project_id: process.env.FIREBASE_PROJECT_ID,
+      private_key_id: process.env.FIREBASE_PRIVATE_KEY_ID,
+      private_key: process.env.FIREBASE_PRIVATE_KEY?.replace(/\\n/g, '\n'),
+      client_email: process.env.FIREBASE_CLIENT_EMAIL,
+      client_id: process.env.FIREBASE_CLIENT_ID,
+      auth_uri: "https://accounts.google.com/o/oauth2/auth",
+      token_uri: "https://oauth2.googleapis.com/token",
+      auth_provider_x509_cert_url: "https://www.googleapis.com/oauth2/v1/certs",
+      client_x509_cert_url: process.env.FIREBASE_CLIENT_CERT_URL
+    };
+
+    admin.initializeApp({
+      credential: admin.credential.cert(serviceAccount),
+      databaseURL: process.env.FIREBASE_DATABASE_URL
+    });
+    firebaseInitialized = true;
+    console.log('✅ Firebase Admin initialized successfully');
+  }
+} catch (error) {
+  console.error('❌ CRITICAL: Firebase initialization failed:', error.message);
+  console.error('This is required for the server to work. Check your environment variables.');
+  process.exit(1);
+}
+
+
+// Enhanced Package Cache System with error recovery
+let packageCache = {
+  mtn: [],
+  at: [],
+  lastUpdated: null,
+  isInitialized: false
+};
+
+function initializePackageCache() {
+  console.log('🔄 Initializing real-time package cache (non-blocking)...');
+  
+  // Don't block startup - run in background
+  setTimeout(() => {
+    try {
+      const mtnRef = admin.database().ref('packages/mtn');
+      const atRef = admin.database().ref('packages/at');
+      
+      mtnRef.on('value', (snapshot) => {
+        try {
+          const packages = snapshot.val() || {};
+          const packagesArray = Object.entries(packages).map(([key, pkg]) => ({
+            id: key,
+            ...pkg
+          }));
+          
+          packageCache.mtn = packagesArray;
+          packageCache.lastUpdated = Date.now();
+          packageCache.isInitialized = true;
+          console.log(`✅ MTN packages cache updated (${packagesArray.length} packages)`);
+        } catch (error) {
+          console.error('❌ Error updating MTN packages cache:', error);
+        }
+      }, (error) => {
+        console.error('⚠️  MTN packages listener warning:', error.message);
+      });
+      
+      atRef.on('value', (snapshot) => {
+        try {
+          const packages = snapshot.val() || {};
+          const packagesArray = Object.entries(packages).map(([key, pkg]) => ({
+            id: key,
+            ...pkg
+          }));
+          
+          packageCache.at = packagesArray;
+          packageCache.lastUpdated = Date.now();
+          packageCache.isInitialized = true;
+          console.log(`✅ AirtelTigo packages cache updated (${packagesArray.length} packages)`);
+        } catch (error) {
+          console.error('❌ Error updating AirtelTigo packages cache:', error);
+        }
+      }, (error) => {
+        console.error('⚠️  AirtelTigo packages listener warning:', error.message);
+      });
+    } catch (error) {
+      console.error('⚠️  Package cache initialization warning:', error.message);
+    }
+  }, 100);
+}
+
+// Schedule cache initialization to run after server starts
+let cacheInitialized = false;
+
+// Custom Firebase Session Store (persists sessions across restarts)
+class FirebaseSessionStore extends session.Store {
+  constructor() {
+    super();
+    this.sessionsRef = admin.database().ref('sessions');
+  }
+
+  get(sessionId, callback) {
+    console.log('📖 Session store: GET', sessionId);
+    this.sessionsRef.child(sessionId).once('value', (snapshot) => {
+      const data = snapshot.val();
+      if (data && data.expires > Date.now()) {
+        // Session still valid
+        console.log('✅ Session store: GET found valid session for', sessionId);
+        try {
+          const parsedSession = data.session ? JSON.parse(data.session) : null;
+          callback(null, parsedSession);
+        } catch (parseError) {
+          console.error('❌ Error parsing session data:', parseError);
+          this.sessionsRef.child(sessionId).remove();
+          callback(null, null);
+        }
+      } else if (data) {
+        // Session expired, delete it
+        console.log('⏰ Session store: GET found expired session for', sessionId, '- deleting');
+        this.sessionsRef.child(sessionId).remove();
+        callback(null, null);
+      } else {
+        console.log('❌ Session store: GET found NO session for', sessionId);
+        callback(null, null);
+      }
+    }).catch((err) => {
+      console.error('❌ Session store GET error:', err);
+      callback(err);
+    });
+  }
+
+  set(sessionId, sessionData, callback) {
+    const expiresMs = sessionData.cookie.maxAge || 24 * 60 * 60 * 1000;
+    console.log('💾 Session store: SET', sessionId, 'with user:', sessionData.user?.uid || 'no user');
+    this.sessionsRef.child(sessionId).set({
+      session: JSON.stringify(sessionData),
+      expires: Date.now() + expiresMs,
+      createdAt: Date.now()
+    }, (err) => {
+      if (err) {
+        console.error('❌ Session store SET error:', err);
+        callback(err);
+      } else {
+        console.log('✅ Session store: SET complete for', sessionId);
+        callback(null);
+      }
+    });
+  }
+
+  destroy(sessionId, callback) {
+    console.log('🗑️  Session store: DESTROY', sessionId);
+    this.sessionsRef.child(sessionId).remove((err) => {
+      if (err) {
+        console.error('❌ Session store DESTROY error:', err);
+        callback(err);
+      } else {
+        console.log('✅ Session store: DESTROY complete for', sessionId);
+        callback(null);
+      }
+    });
+  }
+
+  touch(sessionId, sessionData, callback) {
+    const expiresMs = sessionData.cookie.maxAge || 24 * 60 * 60 * 1000;
+    console.log('🔄 Session store: TOUCH', sessionId);
+    this.sessionsRef.child(sessionId).update({
+      expires: Date.now() + expiresMs
+    }, (err) => {
+      if (err) {
+        console.error('❌ Session store TOUCH error:', err);
+        callback(err);
+      } else {
+        console.log('✅ Session store: TOUCH complete for', sessionId);
+        callback(null);
+      }
+    });
+  }
+}
+
+// Enhanced middleware setup
+app.use(express.static(path.join(__dirname, 'public')));
+
+// Middleware to capture raw body for Paystack webhook signature verification
+app.use((req, res, next) => {
+  if (req.path === '/api/paystack/webhook') {
+    let rawBody = '';
+    req.on('data', chunk => {
+      rawBody += chunk.toString('utf8');
+    });
+    req.on('end', () => {
+      req.rawBody = rawBody;
+      try {
+        req.body = JSON.parse(rawBody);
+      } catch (e) {
+        req.body = {};
+      }
+      next();
+    });
+  } else {
+    next();
+  }
+});
+
+app.use(express.json({ limit: '10mb' }));
+app.use(express.urlencoded({ extended: true, limit: '10mb' }));
+
+// Enhanced session configuration with Firebase persistence
+app.use(session({
+  store: new FirebaseSessionStore(),
+  secret: process.env.SESSION_SECRET,
+  resave: false,
+  saveUninitialized: false,
+  // Allow overriding secure flag via env `SESSION_COOKIE_SECURE` for local testing
+  cookie: {
+    secure: (typeof process.env.SESSION_COOKIE_SECURE !== 'undefined') ? (process.env.SESSION_COOKIE_SECURE === 'true') : (process.env.NODE_ENV === 'production'),
+    httpOnly: true,
+    sameSite: 'lax',
+    maxAge: 30 * 60 * 1000 // 30 minutes inactivity timeout
+  },
+  name: 'datasell.sid',
+  rolling: true // Reset the session timeout on each request (rolling expiration)
+}));
+
+// Enhanced CORS configuration
+const allowedDomains = [
+  'datasell.store',
+  'datasell.com', 
+  'datasell.onrender.com',
+  'datasell.io',
+  'datasell.pro',
+  'datasell.shop',
+  'localhost:3000',
+'datasell-5w0w.onrender.com'
+];
+
+const corsOptions = {
+  origin: function (origin, callback) {
+    // Allow requests with no origin (like mobile apps or curl requests)
+    if (!origin) return callback(null, true);
+    
+    if (allowedDomains.some(domain => origin.includes(domain))) {
+      callback(null, true);
+    } else {
+      console.log('🚫 CORS blocked origin:', origin);
+      callback(new Error('Not allowed by CORS'));
+    }
+  },
+  credentials: true,
+  optionsSuccessStatus: 200
+};
+
+app.use(cors(corsOptions));
+
+// ============================================
+// SESSION TIMEOUT & INACTIVITY MIDDLEWARE
+// ============================================
+// Auto-logout users after 30 minutes of inactivity
+app.use((req, res, next) => {
+  // Skip timeout check for public/auth endpoints
+  const publicRoutes = [
+    '/login',
+    '/signup',
+    '/forgot-password',
+    '/reset-password',
+    '/api/login',
+    '/api/signup',
+    '/api/auth/verify',
+    '/api/health',
+    '/api/ping',
+    '/api/hubnet-webhook',
+    '/api/datamart-webhook',
+    '/config.js'
+  ];
+
+  if (publicRoutes.includes(req.path)) {
+    return next();
+  }
+
+  // For authenticated routes, track activity
+  if (req.session && req.session.user) {
+    const now = Date.now();
+    const lastActivity = req.session.lastActivity || now;
+    const inactiveMs = now - lastActivity;
+    const inactiveMinutes = inactiveMs / (1000 * 60);
+    
+    // 30 minutes timeout
+    if (inactiveMinutes > 30) {
+      console.log(`⏰ Session timeout for user ${req.session.user.uid} after ${Math.floor(inactiveMinutes)} minutes of inactivity`);
+      // Destroy session and redirect to login
+      req.session.destroy((err) => {
+        if (err) console.error('Session destruction error:', err);
+      });
+      return res.status(401).json({ 
+        success: false, 
+        error: 'Session expired due to inactivity. Please login again.',
+        code: 'SESSION_TIMEOUT'
+      });
+    }
+    
+    // Update last activity timestamp for rolling window
+    req.session.lastActivity = now;
+  }
+
+  next();
+});
+
+// Enhanced domain restriction middleware
+app.use((req, res, next) => {
+  const host = req.get('host');
+  const origin = req.get('origin');
+  
+  // Skip domain check for health endpoints, webhooks and lightweight config
+  if (req.path === '/api/health' || req.path === '/api/ping' || req.path === '/api/hubnet-webhook' || req.path === '/api/datamart-webhook' || req.path === '/config.js') {
+    return next();
+  }
+  
+  // Development bypass: do not enforce domain restrictions when not in production
+  if (process.env.NODE_ENV !== 'production') {
+    // Log host/origin to help diagnose local dev issues
+    console.log('Domain check bypass (dev). host:', host, 'origin:', origin, 'path:', req.path);
+    return next();
+  }
+
+  const isAllowed = allowedDomains.some(domain => 
+    host?.includes(domain) || origin?.includes(domain)
+  );
+
+  if (!isAllowed) {
+    console.log('🚫 Blocked access from:', { host, origin, path: req.path });
+    return res.status(403).json({ 
+      success: false,
+      error: 'Access forbidden - Domain not allowed'
+    });
+  }
+
+  next();
+});
+
+// Rate limiting removed to allow seamless login/signup access.
+
+// Enhanced authentication middleware
+const requireAuth = (req, res, next) => {
+  // Debug: log session state
+  console.log('🔐 Session check for', req.path, ':', {
+    hasSession: !!req.session,
+    hasUser: !!req.session?.user,
+    userId: req.session?.user?.uid || 'none',
+    sessionId: req.sessionID || 'none'
+  });
+
+  if (req.session.user) {
+    next();
+  } else {
+    // Prefer JSON for API routes to avoid HTML redirects being returned to fetch()
+    if (req.path && req.path.startsWith('/api')) {
+      console.warn('Unauthorized API request:', { path: req.path, cookies: req.headers.cookie, session: req.session && Object.keys(req.session).length ? '[session present]' : '[no session]' });
+      return res.status(401).json({ success: false, error: 'Authentication required' });
+    }
+
+    // If the client accepts HTML, redirect to login page for browser navigations
+    if (req.accepts && req.accepts('html')) {
+      return res.redirect('/login');
+    }
+
+    // Fallback to JSON
+    res.status(401).json({ success: false, error: 'Authentication required' });
+  }
+};
+
+// Lightweight client config endpoint (serves runtime values to the browser)
+app.get('/config.js', (req, res) => {
+  const domainEnv = process.env.DOMAIN || null;
+  const base = (domainEnv ? (domainEnv.match(/^https?:\/\//) ? domainEnv : `https://${domainEnv}`) : (process.env.BASE_URL || 'https://datasell.onrender.com')).replace(/\/$/, '');
+  const firebaseConfig = {
+    apiKey: process.env.FIREBASE_API_KEY || null,
+    authDomain: process.env.FIREBASE_AUTH_DOMAIN || null,
+    projectId: process.env.FIREBASE_PROJECT_ID || null,
+    storageBucket: process.env.FIREBASE_STORAGE_BUCKET || null,
+    messagingSenderId: process.env.FIREBASE_MESSAGING_SENDER_ID || null,
+    appId: process.env.FIREBASE_APP_ID || null
+  };
+  res.set('Content-Type', 'application/javascript');
+  const vapid = process.env.FIREBASE_VAPID_KEY || null;
+  
+  // Safely serialize config to JavaScript
+  const configScript = `
+window.__DOMAIN = ${JSON.stringify(domainEnv)};
+window.__BASE_URL = ${JSON.stringify(base)};
+window.__FIREBASE_CONFIG = ${JSON.stringify(firebaseConfig)};
+window.__FCM_VAPID_KEY = ${JSON.stringify(vapid)};
+`;
+  res.send(configScript);
+});
+
+// Health check endpoint for monitoring services (UptimeRobot, Render, etc.)
+app.get('/api/health', (req, res) => {
+  res.status(200).json({ 
+    status: 'ok', 
+    timestamp: new Date().toISOString(),
+    uptime: process.uptime()
+  });
+});
+
+// Serve Firebase Messaging Service Worker dynamically with server-side config
+app.get('/firebase-messaging-sw.js', (req, res) => {
+  res.set('Content-Type', 'application/javascript');
+  const fbConfig = {
+    apiKey: process.env.FIREBASE_API_KEY || null,
+    authDomain: process.env.FIREBASE_AUTH_DOMAIN || null,
+    projectId: process.env.FIREBASE_PROJECT_ID || null,
+    storageBucket: process.env.FIREBASE_STORAGE_BUCKET || null,
+    messagingSenderId: process.env.FIREBASE_MESSAGING_SENDER_ID || null,
+    appId: process.env.FIREBASE_APP_ID || null
+  };
+
+  const sw = `importScripts('https://www.gstatic.com/firebasejs/9.22.1/firebase-app-compat.js');\nimportScripts('https://www.gstatic.com/firebasejs/9.22.1/firebase-messaging-compat.js');\n\nfirebase.initializeApp(${JSON.stringify(fbConfig)});\nconst messaging = firebase.messaging();\n\nmessaging.onBackgroundMessage(function(payload) {\n  try {\n    const title = (payload.notification && payload.notification.title) || 'Notification';\n    const options = {\n      body: (payload.notification && payload.notification.body) || '',\n      icon: (payload.notification && payload.notification.image) || '/images/app-icon.png',\n      data: payload.data || {}\n    };\n    self.registration.showNotification(title, options);\n  } catch (e) { console.error('SW background message error', e); }\n});\n\nself.addEventListener('notificationclick', function(event) {\n  event.notification.close();\n  const url = event.notification.data && event.notification.data.click_action ? event.notification.data.click_action : '/notifications';\n  event.waitUntil(clients.matchAll({ type: 'window' }).then(windowClients => {\n    for (let i = 0; i < windowClients.length; i++) {\n      const client = windowClients[i];\n      if (client.url === url && 'focus' in client) return client.focus();\n    }\n    if (clients.openWindow) return clients.openWindow(url);\n  }));\n});\n`;
+
+  res.send(sw);
+});
+
+// Enhanced admin middleware
+const requireAdmin = (req, res, next) => {
+  if (req.session.user && req.session.user.isAdmin) {
+    next();
+  } else {
+    // For browser navigation, redirect to admin login page for a smoother UX
+    if (req.accepts && req.accepts('html')) {
+      return res.redirect('/admin-login');
+    }
+
+    res.status(403).json({ 
+      success: false, 
+      error: 'Admin privileges required' 
+    });
+  }
+};
+
+// ====================
+// ENHANCED PAGE ROUTES
+// ====================
+
+app.get('/', requireAuth, (req, res) => {
+  res.sendFile(path.join(__dirname, 'public', 'index.html'));
+});
+
+app.get('/login', (req, res) => {
+  if (req.session.user) return res.redirect('/');
+  res.sendFile(path.join(__dirname, 'public', 'login.html'));
+});
+
+app.get('/signup', (req, res) => {
+  if (req.session.user) return res.redirect('/');
+  res.sendFile(path.join(__dirname, 'public', 'signup.html'));
+});
+
+app.get('/forgot-password', (req, res) => {
+  if (req.session.user) return res.redirect('/');
+  res.sendFile(path.join(__dirname, 'public', 'forgot-password.html'));
+});
+
+app.get('/purchase', requireAuth, (req, res) => {
+  res.sendFile(path.join(__dirname, 'public', 'purchase.html'));
+});
+
+app.get('/wallet', requireAuth, (req, res) => {
+  res.sendFile(path.join(__dirname, 'public', 'wallet.html'));
+});
+
+app.get('/orders', requireAuth, (req, res) => {
+  // Serve the orders page (replaced with new content)
+  res.sendFile(path.join(__dirname, 'public', 'orders.html'));
+});
+
+app.get('/notifications', requireAuth, (req, res) => {
+  res.sendFile(path.join(__dirname, 'public', 'notifications.html'));
+});
+
+app.get('/profile', requireAuth, (req, res) => {
+  res.sendFile(path.join(__dirname, 'public', 'profile.html'));
+});
+
+app.get('/admin-login', (req, res) => {
+  // Always show login page, even if already logged in
+  // This ensures users must always log in when accessing admin
+  res.sendFile(path.join(__dirname, 'public', 'admin-login.html'));
+});
+
+app.get('/admin', (req, res) => {
+  // Check if user is authenticated and is admin
+  console.log('📍 /admin route accessed, session:', { 
+    hasSession: !!req.session?.user, 
+    uid: req.session?.user?.uid,
+    isAdmin: req.session?.user?.isAdmin, 
+    sessionID: req.sessionID 
+  });
+  
+  if (req.session?.user && req.session.user.isAdmin) {
+    // User is already logged in, serve the admin page
+    console.log('✅ Admin access granted for:', req.session.user.uid);
+    res.sendFile(path.join(__dirname, 'public', 'admin.html'));
+  } else {
+    // Not logged in or not admin, redirect to login page
+    console.log('❌ Admin access denied, redirecting to login');
+    res.redirect('/admin-login');
+  }
+});
+
+// ====================
+// ENHANCED AUTHENTICATION API ROUTES
+// ====================
+
+// Enhanced User Registration
+// ============ EMAIL VALIDATION FUNCTION ============
+// Validates email format and checks for common typos
+function validateEmail(email) {
+  // Basic email regex validation
+  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+  
+  if (!emailRegex.test(email)) {
+    return { valid: false, error: 'Invalid email format' };
+  }
+
+  // Check for common domain typos
+  const commonDomains = {
+    'gmial.com': 'gmail.com',
+    'gmai.com': 'gmail.com',
+    'yahou.com': 'yahoo.com',
+    'yaho.com': 'yahoo.com',
+    'outlok.com': 'outlook.com',
+    'hotmial.com': 'hotmail.com',
+    'hotmai.com': 'hotmail.com'
+  };
+
+  const domain = email.split('@')[1]?.toLowerCase();
+  if (commonDomains[domain]) {
+    return { 
+      valid: false, 
+      error: `Did you mean ${email.split('@')[0]}@${commonDomains[domain]}? (detected typo in domain)` 
+    };
+  }
+
+  // Check email length
+  if (email.length > 254) {
+    return { valid: false, error: 'Email is too long' };
+  }
+
+  // Check for consecutive dots or invalid characters
+  if (email.includes('..') || /[<>()\\[\],;:\s]/g.test(email)) {
+    return { valid: false, error: 'Email contains invalid characters' };
+  }
+
+  // Email is valid
+  return { valid: true };
+}
+
+app.post('/api/signup', async (req, res) => {
+  try {
+    const { email, password, firstName, lastName, phone, acceptedTerms } = req.body;
+    
+    // Validation
+    if (!email || !password || !firstName || !lastName || !phone) {
+      return res.status(400).json({ 
+        success: false, 
+        error: 'All fields are required' 
+      });
+    }
+
+    // Email validation
+    const emailValidation = validateEmail(email.trim());
+    if (!emailValidation.valid) {
+      return res.status(400).json({ 
+        success: false, 
+        error: emailValidation.error 
+      });
+    }
+
+    // Terms acceptance validation
+    if (!acceptedTerms) {
+      return res.status(400).json({
+        success: false,
+        error: 'You must accept the Terms of Service and Privacy Policy to create an account'
+      });
+    }
+
+    // Phone validation
+    const phoneValidationResult = validateGhanianPhone(phone);
+    if (!phoneValidationResult.valid) {
+      console.warn(`⚠️ Invalid phone attempt: ${phone} - ${phoneValidationResult.error}`);
+      return res.status(400).json({ 
+        success: false, 
+        error: phoneValidationResult.error 
+      });
+    }
+
+    const normalizedPhone = phoneValidationResult.normalized;
+
+    console.log(`✅ Valid phone: ${normalizedPhone}`);
+
+    // Check if phone is blocked
+    const phoneBlacklistCheck = await validatePhoneSignup(normalizedPhone);
+    if (!phoneBlacklistCheck.valid) {
+      console.warn(`⚠️ Blocked phone signup attempt: ${normalizedPhone}`);
+      await logBlockedPhoneAttempt(normalizedPhone, 'signup', null, { 
+        email: email,
+        ip: req.ip,
+        userAgent: req.get('user-agent')
+      });
+      return res.status(403).json({ 
+        success: false, 
+        error: phoneBlacklistCheck.error 
+      });
+    }
+
+    // Check if email already exists
+    const usersSnapshot = await admin.database().ref('users').once('value');
+    const existingUsers = usersSnapshot.val() || {};
+    
+    for (const [uid, userData] of Object.entries(existingUsers)) {
+      if (userData.email && userData.email.toLowerCase() === email.toLowerCase()) {
+        return res.status(400).json({ 
+          success: false, 
+          error: 'Email already exists' 
+        });
+      }
+    }
+
+    let uid = null;
+    let authMethod = 'database'; // Track which auth method was used
+
+    // OPTION 1 & 3: Try Firebase Auth first (if enabled)
+    try {
+      console.log('🔐 Attempting Firebase Auth signup...');
+      const userRecord = await admin.auth().createUser({
+        email: email.toLowerCase().trim(),
+        password,
+        displayName: `${firstName} ${lastName}`
+      });
+      uid = userRecord.uid;
+      authMethod = 'firebase';
+      console.log(`✅ User created in Firebase Auth: ${uid}`);
+    } catch (firebaseError) {
+      console.warn(`⚠️ Firebase Auth unavailable: ${firebaseError.message}`);
+      console.log('📦 Falling back to database-based authentication...');
+      
+      // OPTION 2: Fall back to database-based auth
+      uid = 'user_' + require('crypto').randomBytes(8).toString('hex');
+      authMethod = 'database';
+      console.log(`✅ Using database-based auth with UID: ${uid}`);
+    }
+
+    // Hash password for database backup (always, regardless of auth method)
+    const passwordHash = await bcrypt.hash(password, 10);
+
+    // Create/Update user in database
+    await admin.database().ref('users/' + uid).set({
+      uid: uid,
+      firstName: firstName.trim(),
+      lastName: lastName.trim(),
+      email: email.toLowerCase().trim(),
+      phone: normalizedPhone,
+      passwordHash: passwordHash, // For database auth fallback
+      walletBalance: 0,
+      createdAt: new Date().toISOString(),
+      isAdmin: email === process.env.ADMIN_EMAIL,
+      pricingGroup: 'regular',
+      suspended: false,
+      lastLogin: null,
+      authMethod: authMethod // Track which auth system is used
+    });
+
+    // Log registration
+    await admin.database().ref('userLogs').push().set({
+      userId: uid,
+      action: 'registration',
+      email: email.toLowerCase(),
+      phone: normalizedPhone,
+      authMethod: authMethod,
+      timestamp: new Date().toISOString(),
+      ip: req.ip
+    });
+
+    console.log(`✅ User registered successfully: ${email} (${uid}) via ${authMethod}`);
+
+    res.json({ 
+      success: true, 
+      userId: uid,
+      authMethod: authMethod,
+      message: 'Account created successfully. You can now log in with your email and password.'
+    });
+  } catch (error) {
+    console.error('Signup error:', error);
+    res.status(500).json({ 
+      success: false, 
+      error: 'Failed to create account: ' + error.message 
+    });
+  }
+});
+
+// Enhanced User Login
+app.post('/api/login', async (req, res) => {
+  try {
+    let { email, password, remember, isAdminLogin } = req.body;
+    // Coerce remember to boolean for safety (clients may send 'true'/'false' strings)
+    remember = (remember === true || remember === 'true');
+    isAdminLogin = (isAdminLogin === true || isAdminLogin === 'true');
+    console.log('🔐 Login attempt received', { email, remember, isAdminLogin });
+
+    // Enforce 'remember me' requirement: do not allow login unless user checked it
+    if (!remember) {
+      console.log('❌ Remember me not checked');
+      return res.status(400).json({
+        success: false,
+        error: 'You must check "Remember me" to sign in.'
+      });
+    }
+    
+    if (!email || !password) {
+      console.log('❌ Missing email or password');
+      return res.status(400).json({ 
+        success: false, 
+        error: 'Email and password are required' 
+      });
+    }
+
+    // Check for admin credentials first (works from either login.html or admin-login.html)
+    if ((email === process.env.ADMIN_EMAIL || email.toLowerCase() === process.env.ADMIN_EMAIL.toLowerCase()) &&
+        password === process.env.ADMIN_PASSWORD) {
+      console.log('🔑 Admin login detected for:', email);
+      // Admin credentials match
+      console.log('✅ Admin credentials match');
+      
+      // For admin, use database-based auth (Firebase Auth not available)
+      // Look for existing admin user record by email
+      const usersSnapshot = await admin.database().ref('users').once('value');
+      const users = usersSnapshot.val() || {};
+      let adminUser = null;
+      let adminUid = null;
+      
+      // Search for existing user with admin email
+      for (const [uid, userData] of Object.entries(users)) {
+        if (userData.email && userData.email.toLowerCase() === email.toLowerCase()) {
+          adminUser = userData;
+          adminUid = uid;
+          console.log('✅ Found existing admin user record with UID:', adminUid);
+          break;
+        }
+      }
+      
+      // If no existing admin user, create one (but with a consistent UID)
+      if (!adminUid) {
+        adminUid = 'admin-' + email.replace('@', '-').replace(/[^a-z0-9-]/gi, '');
+        console.log('📝 Creating new admin user record with UID:', adminUid);
+        adminUser = {
+          uid: adminUid,
+          firstName: 'Admin',
+          lastName: 'User',
+          email,
+          phone: '',
+          walletBalance: 0,
+          createdAt: new Date().toISOString(),
+          isAdmin: true,
+          pricingGroup: 'admin',
+          suspended: false,
+          lastLogin: new Date().toISOString()
+        };
+        
+        // Save new admin user
+        await admin.database().ref('users/' + adminUid).set(adminUser);
+      } else {
+        // Update existing admin user's last login
+        await admin.database().ref('users/' + adminUid + '/lastLogin').set(new Date().toISOString());
+      }
+      
+      req.session.user = {
+        uid: adminUid,
+        email,
+        displayName: adminUser?.displayName || adminUser?.firstName + ' ' + adminUser?.lastName || 'Administrator',
+        isAdmin: true
+      };
+
+      console.log('✅ Admin session set:', { uid: req.session.user.uid, isAdmin: req.session.user.isAdmin, sessionID: req.sessionID });
+
+      // Respect 'remember me' for admin sessions if provided
+      try {
+        const rememberMs = remember ? 30 * 24 * 60 * 60 * 1000 : 24 * 60 * 60 * 1000; // 30 days || 24 hours
+        req.session.cookie.maxAge = rememberMs;
+      } catch (e) {
+        // Ignore if session cookie cannot be modified
+      }
+
+      // Return response - express-session middleware will automatically save and set Set-Cookie
+      console.log('📤 Sending admin login response with sessionID:', req.sessionID);
+      return res.json({ 
+        success: true, 
+        message: 'Admin login successful',
+        user: req.session.user,
+        sessionID: req.sessionID,
+        isAdmin: true
+      });
+    }
+
+    // Enhanced Regular user login - Check database first
+    console.log('👤 Regular user login attempt for:', email);
+    
+    // First, try to find user by email in the database
+    const usersSnapshot = await admin.database().ref('users').once('value');
+    const allUsers = usersSnapshot.val() || {};
+    
+    let foundUser = null;
+    let foundUserId = null;
+    
+    // Search for user with matching email
+    for (const [uid, userData] of Object.entries(allUsers)) {
+      if (userData.email && userData.email.toLowerCase() === email.toLowerCase()) {
+        foundUser = userData;
+        foundUserId = uid;
+        console.log('✅ Found user in database:', uid);
+        break;
+      }
+    }
+    
+    if (!foundUser) {
+      console.log('❌ User not found in database:', email);
+      return res.status(401).json({ 
+        success: false, 
+        error: 'Invalid email or password' 
+      });
+    }
+    
+    // Check if user is suspended
+    if (foundUser.suspended) {
+      console.log('⛔ User suspended:', email);
+      return res.status(403).json({
+        success: false,
+        error: 'Account suspended. Please contact administrator.'
+      });
+    }
+    
+    // Verify password - check if stored as hashed or plain
+    let passwordMatch = false;
+    
+    if (foundUser.passwordHash) {
+      // Compare with bcrypt hash
+      try {
+        passwordMatch = await bcrypt.compare(password, foundUser.passwordHash);
+        console.log('🔐 Password compared with hash:', passwordMatch);
+      } catch (e) {
+        console.error('❌ Bcrypt error:', e.message);
+        passwordMatch = false;
+      }
+    } else if (foundUser.password) {
+      // Fallback: plain text comparison (for legacy users)
+      passwordMatch = (foundUser.password === password);
+      console.log('⚠️ Plain text password match:', passwordMatch);
+    }
+    
+    if (!passwordMatch) {
+      console.log('❌ Password mismatch for user:', email);
+      return res.status(401).json({ 
+        success: false, 
+        error: 'Invalid email or password' 
+      });
+    }
+    
+    console.log('✅ Password verified for user:', email);
+    
+    // Set user session
+    req.session.user = {
+      uid: foundUserId,
+      email: foundUser.email,
+      displayName: foundUser.displayName || `${foundUser.firstName || ''} ${foundUser.lastName || ''}`.trim(),
+      isAdmin: foundUser.isAdmin || false
+    };
+
+    // Respect 'remember me' for regular user sessions
+    try {
+      const rememberMs = remember ? 30 * 24 * 60 * 60 * 1000 : 24 * 60 * 60 * 1000; // 30 days || 24 hours
+      req.session.cookie.maxAge = rememberMs;
+    } catch (e) {
+      // Ignore if session cookie cannot be modified
+    }
+
+    // Update last login - do this in background
+    admin.database().ref('users/' + foundUserId).update({
+      lastLogin: new Date().toISOString()
+    }).catch(err => console.error('Failed to update lastLogin:', err));
+
+    // Log session info for debugging
+    console.log('✅ User login for', foundUserId, 'sessionID:', req.sessionID, 'cookieMaxAge:', req.session.cookie.maxAge);
+    console.log('🍪 Session data set:', { uid: req.session.user.uid, isAdmin: req.session.user.isAdmin, sessionID: req.sessionID });
+    
+    // Save session explicitly before returning response
+    return req.session.save((err) => {
+      if (err) {
+        console.error('❌ Session save error:', err);
+        return res.status(500).json({ success: false, error: 'Session save failed' });
+      }
+      
+      console.log('✅ User session saved successfully');
+      // Return response - session is now saved
+      return res.json({ 
+        success: true, 
+        message: 'Login successful',
+        user: req.session.user,
+        sessionID: req.sessionID
+      });
+    });
+  } catch (error) {
+    console.error('Login error:', error);
+    
+    if (error.response?.data?.error?.message) {
+      const errorMessage = error.response.data.error.message;
+      if (errorMessage.includes('INVALID_EMAIL') || errorMessage.includes('INVALID_PASSWORD')) {
+        return res.status(401).json({ 
+          success: false, 
+          error: 'Invalid email or password' 
+        });
+      }
+      // Do not expose or enforce Firebase's TOO_MANY_ATTEMPTS_TRY_LATER limit.
+      // Map that specific error to a generic response so the client isn't
+      // blocked or shown the rate-limit message.
+      if (errorMessage.includes('TOO_MANY_ATTEMPTS_TRY_LATER')) {
+        return res.status(401).json({ success: false, error: 'Invalid credentials' });
+      }
+      if (errorMessage) {
+        return res.status(401).json({ success: false, error: errorMessage });
+      }
+    }
+    
+    res.status(401).json({ 
+      success: false, 
+      error: 'Invalid credentials' 
+    });
+  }
+});
+
+// Forgot Password - Handle password reset request
+app.post('/api/forgot-password', async (req, res) => {
+  try {
+    const { email } = req.body;
+    
+    if (!email) {
+      return res.status(400).json({ success: false, error: 'Email is required' });
+    }
+
+    console.log('🔑 Password reset request for email:', email);
+
+    // Find user by email in Firebase Auth
+    try {
+      const user = await admin.auth().getUserByEmail(email);
+      
+      // Generate password reset link
+      const resetLink = await admin.auth().generatePasswordResetLink(email);
+      
+      console.log('✅ Password reset link generated for user:', user.uid);
+      
+      // Store reset request in database with timestamp
+      const resetToken = Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15);
+      const resetExpiresAt = Date.now() + (60 * 60 * 1000); // 1 hour expiration
+      
+      await admin.database().ref(`passwordResets/${user.uid}`).set({
+        email: email,
+        token: resetToken,
+        createdAt: new Date().toISOString(),
+        expiresAt: resetExpiresAt,
+        used: false
+      });
+
+      // Send email with password reset link
+      let emailSent = false;
+      if (process.env.EMAIL_USER && process.env.EMAIL_PASSWORD) {
+        console.log('📬 Starting email send process...');
+        emailSent = await sendPasswordResetEmail(email, resetLink, user.displayName || 'User');
+        console.log('📬 Email send result:', emailSent);
+      } else {
+        console.log('⚠️ Email service not configured. Reset link logged for development only.');
+        console.log('📧 Password Reset Link (for development):', resetLink);
+      }
+
+      res.json({ 
+        success: true, 
+        message: 'If this email exists in our system, a password reset link has been sent to your email. Please check your inbox and spam folder.',
+        emailSent: emailSent,
+        // Include link for development/testing only (REMOVE IN PRODUCTION)
+        resetLink: process.env.NODE_ENV === 'development' ? resetLink : undefined
+      });
+    } catch (authError) {
+      console.log('ℹ️ Email not found or invalid:', authError.message);
+      
+      // For security, return generic message even if user not found
+      res.json({ 
+        success: true, 
+        message: 'If this email exists in our system, a password reset link has been sent to your email. Please check your inbox and spam folder.'
+      });
+    }
+  } catch (error) {
+    console.error('Forgot password error:', error);
+    res.status(500).json({ success: false, error: 'An error occurred. Please try again later.' });
+  }
+});
+
+// Enhanced Get current user
+app.get('/api/user', requireAuth, async (req, res) => {
+  try {
+    const uid = req.session.user.uid;
+    console.log('📋 Fetching user data for:', uid, 'isAdmin from session:', req.session.user.isAdmin);
+    
+    const snap = await admin.database().ref('users/' + uid).once('value');
+    const userData = snap.val() || {};
+
+    // Merge session data with database fields we want the client to know
+    const user = Object.assign({}, req.session.user, {
+      phoneNumber: userData.phone || userData.phoneNumber || null,
+      walletBalance: userData.walletBalance || 0,
+      firstName: userData.firstName || null,
+      lastName: userData.lastName || null,
+      displayName: userData.firstName && userData.lastName ? `${userData.firstName} ${userData.lastName}` : userData.displayName || userData.email || 'User',
+      isAdmin: req.session.user.isAdmin || userData.isAdmin || false
+    });
+
+    console.log('✅ User data response:', { uid: user.uid, email: user.email, isAdmin: user.isAdmin });
+    res.json({ success: true, user });
+  } catch (err) {
+    console.error('Get user error:', err);
+    res.status(500).json({ success: false, error: 'Failed to fetch user' });
+  }
+});
+
+// Get user profile endpoint
+app.get('/api/profile', requireAuth, async (req, res) => {
+  try {
+    const uid = req.session.user.uid;
+    const snap = await admin.database().ref('users/' + uid).once('value');
+    const userData = snap.val() || {};
+
+    const profile = {
+      uid,
+      firstName: userData.firstName || '',
+      lastName: userData.lastName || '',
+      email: userData.email || '',
+      phone: userData.phone || '',
+      walletBalance: userData.walletBalance || 0,
+      createdAt: userData.createdAt || null,
+      lastLogin: userData.lastLogin || null,
+      isAdmin: userData.isAdmin || false,
+      pricingGroup: userData.pricingGroup || 'regular'
+    };
+
+    res.json({ success: true, profile });
+  } catch (err) {
+    console.error('Get profile error:', err);
+    res.status(500).json({ success: false, error: 'Failed to fetch profile' });
+  }
+});
+
+// Update user profile
+app.put('/api/profile/update', requireAuth, async (req, res) => {
+  try {
+    const uid = req.session.user.uid;
+    const { firstName, lastName, phone } = req.body;
+
+    // Validate input
+    if (!firstName || !lastName) {
+      return res.status(400).json({ success: false, error: 'First name and last name are required' });
+    }
+
+    // Update user data in Firebase
+    await admin.database().ref('users/' + uid).update({
+      firstName: firstName.trim(),
+      lastName: lastName.trim(),
+      phone: phone ? phone.trim() : ''
+    });
+
+    console.log(`✏️ Profile updated for user ${uid}`);
+
+    res.json({ success: true, message: 'Profile updated successfully' });
+  } catch (err) {
+    console.error('Update profile error:', err);
+    res.status(500).json({ success: false, error: 'Failed to update profile' });
+  }
+});
+
+// Get user profile statistics
+app.get('/api/profile/stats', requireAuth, async (req, res) => {
+  try {
+    const uid = req.session.user.uid;
+    
+    console.log('📊 Fetching stats for user:', uid);
+    
+    // Get all transactions and filter client-side (no index needed)
+    const transactionsSnap = await admin.database().ref('transactions').once('value');
+    const allTransactions = transactionsSnap.val() || {};
+    
+    // Filter transactions for this user
+    const userTransactions = Object.values(allTransactions).filter(t => t.userId === uid);
+    
+    // Count ONLY successful orders (delivered or success status)
+    const successfulTransactions = userTransactions.filter(transaction => 
+      transaction.status === 'delivered' || transaction.status === 'success'
+    );
+    
+    const totalOrders = successfulTransactions.length;
+    const totalSpent = successfulTransactions.reduce((sum, transaction) => sum + (transaction.amount || 0), 0);
+    
+    // Successful orders count (same as totalOrders now)
+    const successfulOrders = totalOrders;
+    
+    console.log(`📊 Stats - Total: ${totalOrders}, Successful: ${successfulOrders}, Spent: ₵${totalSpent}`);
+    
+    // Get wallet info and account status
+    const userSnap = await admin.database().ref('users/' + uid).once('value');
+    const userData = userSnap.val() || {};
+    const walletBalance = userData.walletBalance || 0;
+    const accountStatus = userData.isDeactivated === true ? 'Deactivated' : 'Active';
+
+    const stats = {
+      totalOrders,
+      successfulOrders,
+      totalSpent,
+      walletBalance,
+      accountStatus,
+      memberSince: userData.createdAt || null
+    };
+
+    res.json({ success: true, stats });
+  } catch (err) {
+    console.error('Get profile stats error:', err);
+    res.status(500).json({ success: false, error: 'Failed to fetch stats' });
+  }
+});
+
+// Register FCM token for the logged-in user
+app.post('/api/register-fcm-token', requireAuth, async (req, res) => {
+  try {
+    const { token } = req.body;
+    if (!token) return res.status(400).json({ success: false, error: 'Token is required' });
+    const uid = req.session.user.uid;
+    await admin.database().ref(`fcmTokens/${uid}/${token}`).set(true);
+    res.json({ success: true });
+  } catch (err) {
+    console.error('Register FCM token error:', err);
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// Get notifications for the logged-in user (latest 100)
+app.get('/api/notifications', requireAuth, async (req, res) => {
+  try {
+    const fortyEightHoursAgo = Date.now() - (48 * 60 * 60 * 1000); // Last 48 hours
+    const snap = await admin.database().ref('notifications').orderByChild('createdAt').limitToLast(100).once('value');
+    const data = snap.val() || {};
+    const list = Object.entries(data)
+      .map(([id, n]) => ({ id, ...n }))
+      .filter(n => n.createdAt >= fortyEightHoursAgo); // Only last 48 hours
+    list.sort((a, b) => b.createdAt - a.createdAt);
+    res.json({ success: true, notifications: list });
+  } catch (err) {
+    console.error('Get notifications error:', err);
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// Delete notification
+app.delete('/api/notifications/:id', requireAuth, async (req, res) => {
+  try {
+    const { id } = req.params;
+    await admin.database().ref(`notifications/${id}`).remove();
+    res.json({ success: true, message: 'Notification deleted' });
+  } catch (err) {
+    console.error('Delete notification error:', err);
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// Admin: send notification (text + optional imageBase64)
+app.post('/api/send-notification', requireAdmin, async (req, res) => {
+  try {
+    const { title, body, imageBase64 } = req.body;
+    if (!title && !body) return res.status(400).json({ success: false, error: 'Title or body required' });
+
+    let imageUrl = null;
+    if (imageBase64) {
+      const uploadsDir = path.join(__dirname, 'public', 'uploads');
+      if (!fs.existsSync(uploadsDir)) fs.mkdirSync(uploadsDir, { recursive: true });
+      const matches = imageBase64.match(/^data:(image\/\w+);base64,(.+)$/);
+      if (matches) {
+        const ext = matches[1].split('/')[1];
+        const buf = Buffer.from(matches[2], 'base64');
+        const filename = `${Date.now()}-${Math.random().toString(36).slice(2,8)}.${ext}`;
+        const filepath = path.join(uploadsDir, filename);
+        fs.writeFileSync(filepath, buf);
+        imageUrl = `/uploads/${filename}`;
+      }
+    }
+
+    const newRef = admin.database().ref('notifications').push();
+    const notif = {
+      title: title || '',
+      body: body || '',
+      imageUrl: imageUrl || null,
+      createdAt: Date.now(),
+      sentBy: req.session.user?.email || 'admin'
+    };
+
+    await newRef.set(notif);
+
+    // Collect all tokens and send push via FCM
+    const tokensSnap = await admin.database().ref('fcmTokens').once('value');
+    const tokensData = tokensSnap.val() || {};
+    const tokens = [];
+    Object.values(tokensData).forEach(userTokens => {
+      Object.keys(userTokens || {}).forEach(t => tokens.push(t));
+    });
+
+    if (tokens.length > 0) {
+      const host = req.get('host');
+      const fullImageUrl = notif.imageUrl ? `${req.protocol}://${host}${notif.imageUrl}` : null;
+      const notificationPayload = {
+        title: notif.title,
+        body: notif.body
+      };
+      // include image only when it's a non-empty string to avoid invalid-payload errors
+      if (fullImageUrl && typeof fullImageUrl === 'string') {
+        notificationPayload.image = String(fullImageUrl);
+      }
+
+      const payload = {
+        notification: notificationPayload,
+        data: {
+          click_action: '/notifications',
+          notificationId: newRef.key
+        }
+      };
+
+      // send in batches (max 500 per sendToDevice)
+      for (let i = 0; i < tokens.length; i += 500) {
+        const chunk = tokens.slice(i, i + 500);
+        try {
+          await admin.messaging().sendToDevice(chunk, payload);
+        } catch (sendErr) {
+          console.error('FCM send error for chunk:', sendErr);
+        }
+      }
+    }
+
+    res.json({ success: true, notification: notif });
+  } catch (err) {
+    console.error('Send notification error:', err);
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// ====================
+// ADMIN DASHBOARD ENDPOINTS
+// ====================
+
+// Admin Dashboard Statistics
+app.get('/api/admin/dashboard/stats', requireAdmin, async (req, res) => {
+  try {
+    const [usersSnapshot, transactionsSnapshot, paymentsSnapshot] = await Promise.all([
+      admin.database().ref('users').once('value'),
+      admin.database().ref('transactions').once('value'),
+      admin.database().ref('payments').once('value')
+    ]);
+
+    const users = usersSnapshot.val() || {};
+    const transactions = transactionsSnapshot.val() || {};
+    const payments = paymentsSnapshot.val() || {};
+
+    const usersArray = Object.values(users);
+    const transactionsArray = Object.values(transactions);
+    const paymentsArray = Object.values(payments);
+
+    // Calculate time-based metrics
+    const now = new Date();
+    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const weekAgo = new Date(today.getTime() - 7 * 24 * 60 * 60 * 1000);
+    const monthAgo = new Date(today.getFullYear(), today.getMonth() - 1, today.getDate());
+
+    const todayTransactions = transactionsArray.filter(t => 
+      new Date(t.timestamp) >= today
+    );
+    const weekTransactions = transactionsArray.filter(t => 
+      new Date(t.timestamp) >= weekAgo
+    );
+    const monthTransactions = transactionsArray.filter(t => 
+      new Date(t.timestamp) >= monthAgo
+    );
+
+    // Calculate revenue
+    const totalRevenue = paymentsArray.reduce((sum, payment) => sum + (payment.amount || 0), 0);
+    const todayRevenue = todayTransactions.reduce((sum, t) => sum + (t.amount || 0), 0);
+    const weekRevenue = weekTransactions.reduce((sum, t) => sum + (t.amount || 0), 0);
+    const monthRevenue = monthTransactions.reduce((sum, t) => sum + (t.amount || 0), 0);
+
+    // Calculate Paystack fees (3%)
+    const totalPaystackFees = transactionsArray.reduce((sum, t) => sum + (t.paystackFee || 0), 0);
+    const todayPaystackFees = todayTransactions.reduce((sum, t) => sum + (t.paystackFee || 0), 0);
+    const weekPaystackFees = weekTransactions.reduce((sum, t) => sum + (t.paystackFee || 0), 0);
+    const monthPaystackFees = monthTransactions.reduce((sum, t) => sum + (t.paystackFee || 0), 0);
+
+    // Net revenue (after Paystack fees)
+    const netRevenue = totalRevenue - totalPaystackFees;
+    const todayNetRevenue = todayRevenue - todayPaystackFees;
+    const weekNetRevenue = weekRevenue - weekPaystackFees;
+    const monthNetRevenue = monthRevenue - monthPaystackFees;
+
+    // Top packages
+    const packageSales = {};
+    transactionsArray.forEach(t => {
+      if (t.packageName) {
+        packageSales[t.packageName] = (packageSales[t.packageName] || 0) + 1;
+      }
+    });
+
+    const topPackages = Object.entries(packageSales)
+      .sort(([,a], [,b]) => b - a)
+      .slice(0, 5)
+      .map(([name, count]) => ({ name, count }));
+
+    // Network performance
+    const networkStats = {
+      mtn: transactionsArray.filter(t => t.network === 'mtn').length,
+      at: transactionsArray.filter(t => t.network === 'at').length
+    };
+
+    const stats = {
+      totalUsers: usersArray.length,
+      totalTransactions: transactionsArray.length,
+      totalRevenue,
+      netRevenue: parseFloat(netRevenue.toFixed(2)),
+      totalPaystackFees: parseFloat(totalPaystackFees.toFixed(2)),
+      successfulTransactions: transactionsArray.filter(t => t.status === 'success').length,
+      todayTransactions: todayTransactions.length,
+      todayRevenue,
+      todayNetRevenue: parseFloat(todayNetRevenue.toFixed(2)),
+      todayPaystackFees: parseFloat(todayPaystackFees.toFixed(2)),
+      weekRevenue,
+      weekNetRevenue: parseFloat(weekNetRevenue.toFixed(2)),
+      weekPaystackFees: parseFloat(weekPaystackFees.toFixed(2)),
+      monthRevenue,
+      monthNetRevenue: parseFloat(monthNetRevenue.toFixed(2)),
+      monthPaystackFees: parseFloat(monthPaystackFees.toFixed(2)),
+      newUsers: usersArray.filter(u => new Date(u.createdAt) >= monthAgo).length,
+      topPackages,
+      networkStats,
+      successRate: transactionsArray.length > 0 ? 
+        (transactionsArray.filter(t => t.status === 'success').length / transactionsArray.length * 100).toFixed(1) : 0
+    };
+
+    res.json({ success: true, stats });
+  } catch (error) {
+    console.error('Dashboard stats error:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// Admin Users Management
+app.get('/api/admin/users', requireAdmin, async (req, res) => {
+  try {
+    const usersSnapshot = await admin.database().ref('users').once('value');
+    const transactionsSnapshot = await admin.database().ref('transactions').once('value');
+    
+    const users = usersSnapshot.val() || {};
+    const transactions = transactionsSnapshot.val() || {};
+
+    const usersArray = Object.entries(users).map(([uid, userData]) => {
+      const userTransactions = Object.values(transactions).filter(t => t.userId === uid);
+      const totalSpent = userTransactions.reduce((sum, t) => sum + (t.amount || 0), 0);
+      
+      return {
+        uid,
+        ...userData,
+        totalSpent,
+        transactionCount: userTransactions.length,
+        lastActivity: userData.lastLogin || userData.createdAt,
+        status: userData.suspended ? 'suspended' : 'active',
+        pricingGroup: userData.pricingGroup || 'regular'
+      };
+    });
+
+    res.json({ success: true, users: usersArray });
+  } catch (error) {
+    console.error('Admin users error:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// Enhanced Logout
+app.post('/api/logout', (req, res) => {
+  req.session.destroy((err) => {
+    if (err) {
+      console.error('Logout error:', err);
+      return res.status(500).json({ success: false, error: 'Logout failed' });
+    }
+    res.json({ success: true, message: 'Logged out successfully' });
+  });
+});
+
+// Logout page (GET) - redirects to login after destroying session
+app.get('/logout', (req, res) => {
+  req.session.destroy((err) => {
+    if (err) {
+      console.error('Logout error:', err);
+    }
+    // Redirect to admin-login after logout
+    res.redirect('/admin-login');
+  });
+});
+
+// Change Password Endpoint
+app.post('/api/change-password', requireAuth, async (req, res) => {
+  try {
+    const { currentPassword, newPassword } = req.body;
+    const userId = req.session.user.uid;
+    
+    // Validate inputs
+    if (!currentPassword || !newPassword) {
+      return res.status(400).json({
+        success: false,
+        error: 'Current password and new password are required'
+      });
+    }
+    
+    if (newPassword.length < 6) {
+      return res.status(400).json({
+        success: false,
+        error: 'New password must be at least 6 characters'
+      });
+    }
+    
+    // Get user from database
+    const userSnapshot = await admin.database().ref('users/' + userId).once('value');
+    const userData = userSnapshot.val();
+    
+    if (!userData) {
+      return res.status(404).json({
+        success: false,
+        error: 'User not found'
+      });
+    }
+    
+    // Verify current password
+    if (!userData.passwordHash) {
+      return res.status(400).json({
+        success: false,
+        error: 'No password set for this account'
+      });
+    }
+    
+    // Compare current password with stored hash
+    const passwordMatch = await bcrypt.compare(currentPassword, userData.passwordHash);
+    
+    if (!passwordMatch) {
+      console.log('❌ Wrong current password for user:', userId);
+      return res.status(401).json({
+        success: false,
+        error: 'Current password is incorrect'
+      });
+    }
+    
+    // Hash new password
+    const newPasswordHash = await bcrypt.hash(newPassword, 10);
+    
+    // Update password in database
+    await admin.database().ref('users/' + userId).update({
+      passwordHash: newPasswordHash,
+      passwordChangedAt: new Date().toISOString(),
+      requiresPasswordChange: false
+    });
+    
+    console.log('✅ Password changed successfully for user:', userId);
+    
+    res.json({
+      success: true,
+      message: 'Password changed successfully'
+    });
+    
+  } catch (error) {
+    console.error('Change password error:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to change password: ' + error.message
+    });
+  }
+});
+
+// ====================
+// ENHANCED WALLET & PAYMENT ROUTES
+// ====================
+
+// Enhanced Get wallet balance
+app.get('/api/wallet/balance', requireAuth, async (req, res) => {
+  try {
+    const userId = req.session.user.uid;
+    const userSnapshot = await admin.database().ref('users/' + userId).once('value');
+    const userData = userSnapshot.val();
+    
+    if (!userData) {
+      return res.status(404).json({ 
+        success: false, 
+        error: 'User not found' 
+      });
+    }
+
+    res.json({ 
+      success: true, 
+      balance: userData.walletBalance || 0 
+    });
+  } catch (error) {
+    console.error('Wallet balance error:', error);
+    res.status(500).json({ 
+      success: false, 
+      error: 'Failed to fetch wallet balance' 
+    });
+  }
+});
+
+// Enhanced Get wallet transactions
+app.get('/api/wallet/transactions', requireAuth, async (req, res) => {
+  try {
+    const userId = req.session.user.uid;
+    
+    const transactionsSnapshot = await admin.database()
+      .ref('transactions')
+      .orderByChild('userId')
+      .equalTo(userId)
+      .once('value');
+    
+    const paymentsSnapshot = await admin.database()
+      .ref('payments')
+      .orderByChild('userId')
+      .equalTo(userId)
+      .once('value');
+
+    const transactions = transactionsSnapshot.val() || {};
+    const payments = paymentsSnapshot.val() || {};
+
+    // Combine and format transactions
+    let allTransactions = [];
+
+    // Add data purchases (transactions)
+    Object.entries(transactions).forEach(([id, transaction]) => {
+      allTransactions.push({
+        id,
+        type: 'purchase',
+        description: `${transaction.packageName} - ${transaction.network?.toUpperCase() || ''}`,
+        amount: -transaction.amount,
+        status: transaction.status || 'success',
+        timestamp: transaction.timestamp,
+        reference: transaction.reference
+      });
+    });
+
+    // Add wallet funding (payments)
+    Object.entries(payments).forEach(([id, payment]) => {
+      allTransactions.push({
+        id,
+        type: 'funding',
+        description: 'Wallet Funding',
+        amount: payment.amount,
+        status: payment.status || 'success',
+        timestamp: payment.timestamp,
+        reference: payment.reference
+      });
+    });
+
+    // Sort by timestamp (newest first) and limit
+    allTransactions.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
+    allTransactions = allTransactions.slice(0, 50);
+
+    res.json({
+      success: true,
+      transactions: allTransactions
+    });
+  } catch (error) {
+    console.error('Error loading wallet transactions:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to load transactions'
+    });
+  }
+});
+
+// Enhanced Get user orders
+app.get('/api/orders', requireAuth, async (req, res) => {
+  try {
+    const userId = req.session.user.uid;
+    const limit = parseInt(req.query.limit) || 20; // Default to 20 recent orders
+    
+    console.log('📦 Fetching orders for user:', userId, 'limit:', limit);
+    
+    // Try using orderByChild first (faster with index)
+    try {
+      const transactionsSnapshot = await admin.database()
+        .ref('transactions')
+        .orderByChild('userId')
+        .equalTo(userId)
+        .once('value');
+
+      const transactions = transactionsSnapshot.val() || {};
+
+      // Format transactions as orders
+      const orders = Object.entries(transactions)
+        .map(([id, transaction]) => ({
+          id,
+          packageName: transaction.packageName || 'Data Package',
+          network: transaction.network || 'unknown',
+          phoneNumber: transaction.phoneNumber || '',
+          amount: transaction.amount || 0,
+          volume: transaction.volume || '0MB',
+          status: transaction.status || 'processing',
+          reference: transaction.reference || '',
+          transactionId: transaction.transactionId || transaction.datamartTransactionId || transaction.hubnetTransactionId || '',
+          timestamp: transaction.timestamp || new Date().toISOString(),
+          reason: transaction.reason || ''
+        }))
+        .sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp))
+        .slice(0, limit); // Limit to most recent N orders
+
+      console.log(`✅ Found ${orders.length} orders using orderByChild`);
+
+      res.json({
+        success: true,
+        orders: orders,
+        count: orders.length
+      });
+    } catch (indexError) {
+      // Fallback: read all transactions and filter client-side
+      console.log('⚠️ OrderByChild failed, using fallback method:', indexError.message);
+      
+      const allTransactionsSnapshot = await admin.database()
+        .ref('transactions')
+        .limitToLast(500) // Limit to last 500 transactions to avoid loading everything
+        .once('value');
+
+      const allTransactions = allTransactionsSnapshot.val() || {};
+
+      // Filter transactions for current user
+      const orders = Object.entries(allTransactions)
+        .filter(([id, transaction]) => transaction.userId === userId)
+        .map(([id, transaction]) => ({
+          id,
+          packageName: transaction.packageName || 'Data Package',
+          network: transaction.network || 'unknown',
+          phoneNumber: transaction.phoneNumber || '',
+          amount: transaction.amount || 0,
+          volume: transaction.volume || '0MB',
+          status: transaction.status || 'processing',
+          reference: transaction.reference || '',
+          transactionId: transaction.transactionId || transaction.datamartTransactionId || transaction.hubnetTransactionId || '',
+          timestamp: transaction.timestamp || new Date().toISOString(),
+          reason: transaction.reason || ''
+        }))
+        .sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp))
+        .slice(0, limit); // Limit to most recent N orders
+
+      console.log(`✅ Found ${orders.length} orders using fallback method`);
+
+      res.json({
+        success: true,
+        orders: orders,
+        count: orders.length
+      });
+    }
+  } catch (error) {
+    console.error('❌ Error loading orders:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to load orders'
+    });
+  }
+});
+
+// Enhanced Paystack wallet funding
+app.post('/api/initialize-payment', requireAuth, async (req, res) => {
+  try {
+    const { amount } = req.body;
+    const userId = req.session.user.uid;
+    const email = req.session.user.email;
+    
+    if (!amount || amount <= 0) {
+      return res.status(400).json({ 
+        success: false, 
+        error: 'Invalid amount' 
+      });
+    }
+
+    // Calculate Paystack amount (add 3% fee)
+    const paystackAmount = Math.ceil(amount * 100 * 1.06);
+
+    const paystackResponse = await axios.post(
+      `${process.env.PAYSTACK_BASE_URL}/transaction/initialize`,
+      {
+        email,
+        amount: paystackAmount,
+        callback_url: `${process.env.BASE_URL}/payment-callback`,
+        metadata: {
+          userId: userId,
+          purpose: 'wallet_funding',
+          originalAmount: amount
+        }
+      },
+      {
+        headers: {
+          'Authorization': `Bearer ${process.env.PAYSTACK_SECRET_KEY}`,
+          'Content-Type': 'application/json'
+        },
+        timeout: 15000
+      }
+    );
+
+    console.log('✅ Paystack initialization successful:', {
+      authorizationUrl: paystackResponse.data.data?.authorization_url,
+      accessCode: paystackResponse.data.data?.access_code,
+      reference: paystackResponse.data.data?.reference,
+      status: paystackResponse.data.status,
+      amount: paystackAmount,
+      originalAmount: amount
+    });
+
+    res.json(paystackResponse.data);
+  } catch (error) {
+    console.error('❌ Paystack initialization error:', {
+      message: error.message,
+      paystackResponse: error.response?.data,
+      status: error.response?.status,
+      headers: error.response?.headers
+    });
+    res.status(500).json({ 
+      success: false, 
+      error: error.response?.data?.message || 'Payment initialization failed',
+      details: error.response?.data
+    });
+  }
+});
+
+// Enhanced Verify wallet payment
+app.get('/api/verify-payment/:reference', requireAuth, async (req, res) => {
+  try {
+    const { reference } = req.params;
+    const userId = req.session.user.uid;
+    
+    const paystackResponse = await axios.get(
+      `${process.env.PAYSTACK_BASE_URL}/transaction/verify/${reference}`,
+      {
+        headers: {
+          'Authorization': `Bearer ${process.env.PAYSTACK_SECRET_KEY}`
+        },
+        timeout: 15000
+      }
+    );
+
+    const result = paystackResponse.data;
+    
+    if (result.data.status === 'success') {
+      // Get the ORIGINAL amount from metadata
+      const originalAmount = result.data.metadata.originalAmount || (result.data.amount / 100);
+      const amount = parseFloat(originalAmount);
+      
+      const userRef = admin.database().ref('users/' + userId);
+      const userSnapshot = await userRef.once('value');
+      const currentBalance = userSnapshot.val().walletBalance || 0;
+      
+      // Credit the ORIGINAL amount
+      await userRef.update({ 
+        walletBalance: currentBalance + amount 
+      });
+
+      const paymentRef = admin.database().ref('payments').push();
+      await paymentRef.set({
+        userId,
+        amount: amount,
+        paystackAmount: result.data.amount / 100,
+        fee: (result.data.amount / 100) - amount,
+        reference,
+        status: 'success',
+        paystackData: result.data,
+        timestamp: new Date().toISOString()
+      });
+
+      // Send wallet funding SMS to user
+      try {
+        const userData = userSnapshot.val() || {};
+        const username = userData.displayName || userData.username || userData.name || userData.email || 'Customer';
+        const phoneFallback = userData.phone || userData.phoneNumber || '';
+        const message = `hello ${username} your DataSell has been credited with ${amount} Thank you for choosing DataSell`;
+        sendSmsToUser(userId, phoneFallback, message);
+      } catch (smsErr) {
+        console.error('Wallet funding SMS error:', smsErr);
+      }
+
+      res.json({ 
+        success: true, 
+        amount: amount,
+        newBalance: currentBalance + amount
+      });
+    } else {
+      res.json({ 
+        success: false, 
+        error: 'Payment failed or pending' 
+      });
+    }
+  } catch (error) {
+    console.error('Payment verification error:', error);
+    res.status(500).json({ 
+      success: false, 
+      error: 'Payment verification failed' 
+    });
+  }
+});
+
+// Direct payment callback endpoint (server-side verification and redirect)
+app.get('/payment-callback', async (req, res) => {
+  try {
+    // Paystack sends either 'reference' or 'trxref' parameter
+    const reference = req.query.reference || req.query.trxref;
+    
+    if (!reference) {
+      console.log('❌ No reference found in callback');
+      return res.redirect('/');
+    }
+
+    console.log('💳 Payment callback received for reference:', reference);
+
+    // Verify payment with Paystack
+    const paystackResponse = await axios.get(
+      `${process.env.PAYSTACK_BASE_URL}/transaction/verify/${reference}`,
+      {
+        headers: {
+          'Authorization': `Bearer ${process.env.PAYSTACK_SECRET_KEY}`
+        },
+        timeout: 15000
+      }
+    );
+
+    const result = paystackResponse.data;
+    
+    if (result.data.status === 'success') {
+      console.log('✅ Paystack payment verified as successful');
+      
+      // Get metadata
+      const metadata = result.data.metadata;
+      const userId = metadata.userId;
+      const originalAmount = metadata.originalAmount || (result.data.amount / 100);
+      const amount = parseFloat(originalAmount);
+      
+      // Credit wallet
+      const userRef = admin.database().ref('users/' + userId);
+      const userSnapshot = await userRef.once('value');
+      const currentBalance = userSnapshot.val().walletBalance || 0;
+      
+      await userRef.update({ 
+        walletBalance: currentBalance + amount 
+      });
+
+      console.log(`💰 Wallet credited: ${userId} received ₵${amount}`);
+
+      // Record payment
+      const paymentRef = admin.database().ref('payments').push();
+      await paymentRef.set({
+        userId,
+        amount: amount,
+        paystackAmount: result.data.amount / 100,
+        fee: (result.data.amount / 100) - amount,
+        reference,
+        status: 'success',
+        paystackData: result.data,
+        timestamp: new Date().toISOString()
+      });
+
+      // Send SMS notification
+      try {
+        const userData = userSnapshot.val() || {};
+        const username = userData.displayName || userData.username || userData.name || userData.email || 'Customer';
+        const phoneFallback = userData.phone || userData.phoneNumber || '';
+        const message = `hello ${username} your DataSell has been credited with ${amount} Thank you for choosing DataSell`;
+        sendSmsToUser(userId, phoneFallback, message);
+      } catch (smsErr) {
+        console.error('SMS notification error:', smsErr);
+      }
+
+      // Store payment success in session for confirmation page
+      req.session.paymentConfirmation = {
+        amount: amount,
+        userId: userId,
+        timestamp: new Date().toISOString()
+      };
+      
+      console.log('💾 Payment confirmation stored in session:', req.session.paymentConfirmation);
+      
+      req.session.save((err) => {
+        if (err) {
+          console.error('❌ Session save error:', err);
+          // Redirect with amount in URL as fallback
+          return res.redirect(`/payment-confirmation?amount=${amount}`);
+        }
+        console.log('✅ Session saved successfully, redirecting to confirmation page');
+        // Redirect to confirmation page
+        res.redirect('/payment-confirmation');
+      });
+    } else {
+      console.log('❌ Payment verification failed: status is not success');
+      res.redirect('/payment-confirmation?status=failed');
+    }
+  } catch (error) {
+    console.error('Payment callback error:', error);
+    res.redirect('/payment-confirmation?status=error');
+  }
+});
+
+// Payment confirmation page
+app.get('/payment-confirmation', (req, res) => {
+  const status = req.query.status || 'success';
+  const urlAmount = parseFloat(req.query.amount) || null;
+  const confirmation = req.session.paymentConfirmation;
+  
+  // Get amount from session or URL parameter
+  const amount = confirmation?.amount || urlAmount;
+  
+  if (status === 'success' && amount) {
+    res.send(`
+      <!DOCTYPE html>
+      <html lang="en">
+      <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>Payment Successful | DataSell</title>
+        <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+        <style>
+          body {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+          }
+          .confirmation-card {
+            background: white;
+            border-radius: 20px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+            padding: 60px 40px;
+            text-align: center;
+            max-width: 500px;
+            animation: slideUp 0.6s ease-out;
+          }
+          @keyframes slideUp {
+            from {
+              opacity: 0;
+              transform: translateY(30px);
+            }
+            to {
+              opacity: 1;
+              transform: translateY(0);
+            }
+          }
+          .success-icon {
+            width: 80px;
+            height: 80px;
+            background: #10b981;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin: 0 auto 30px;
+            animation: scaleIn 0.5s ease-out;
+          }
+          @keyframes scaleIn {
+            from {
+              transform: scale(0);
+            }
+            to {
+              transform: scale(1);
+            }
+          }
+          .success-icon svg {
+            width: 50px;
+            height: 50px;
+            color: white;
+            stroke-width: 2;
+          }
+          h1 {
+            color: #1f2937;
+            font-size: 32px;
+            font-weight: 700;
+            margin-bottom: 15px;
+          }
+          .amount {
+            font-size: 48px;
+            font-weight: 700;
+            color: #10b981;
+            margin: 20px 0;
+          }
+          .currency {
+            font-size: 28px;
+          }
+          p {
+            color: #6b7280;
+            font-size: 16px;
+            margin: 15px 0;
+          }
+          .btn-continue {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            border: none;
+            color: white;
+            padding: 15px 60px;
+            font-size: 16px;
+            font-weight: 600;
+            border-radius: 50px;
+            margin-top: 30px;
+            cursor: pointer;
+            transition: transform 0.3s, box-shadow 0.3s;
+          }
+          .btn-continue:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 25px rgba(102, 126, 234, 0.4);
+            color: white;
+            text-decoration: none;
+          }
+          .timer {
+            color: #9ca3af;
+            font-size: 14px;
+            margin-top: 20px;
+          }
+        </style>
+      </head>
+      <body>
+        <div class="confirmation-card">
+          <div class="success-icon">
+            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+              <path stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"></path>
+            </svg>
+          </div>
+          <h1>Payment Successful!</h1>
+          <p>Your wallet has been credited with</p>
+          <div class="amount"><span class="currency">₵</span>${amount.toFixed(2)}</div>
+          <p>Your funds are now available to use immediately.</p>
+          <a href="/" class="btn btn-continue">Return to Homepage</a>
+          <div class="timer">Redirecting in <span id="countdown">5</span> seconds...</div>
+        </div>
+        
+        <script>
+          let count = 5;
+          const interval = setInterval(() => {
+            count--;
+            document.getElementById('countdown').textContent = count;
+            if (count === 0) {
+              clearInterval(interval);
+              window.location.href = '/';
+            }
+          }, 1000);
+        </script>
+      </body>
+      </html>
+    `);
+  } else {
+    // Failed or error state
+    res.send(`
+      <!DOCTYPE html>
+      <html lang="en">
+      <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>Payment Failed | DataSell</title>
+        <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+        <style>
+          body {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+          }
+          .confirmation-card {
+            background: white;
+            border-radius: 20px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+            padding: 60px 40px;
+            text-align: center;
+            max-width: 500px;
+            animation: slideUp 0.6s ease-out;
+          }
+          @keyframes slideUp {
+            from {
+              opacity: 0;
+              transform: translateY(30px);
+            }
+            to {
+              opacity: 1;
+              transform: translateY(0);
+            }
+          }
+          .error-icon {
+            width: 80px;
+            height: 80px;
+            background: #ef4444;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin: 0 auto 30px;
+          }
+          .error-icon svg {
+            width: 50px;
+            height: 50px;
+            color: white;
+          }
+          h1 {
+            color: #1f2937;
+            font-size: 32px;
+            font-weight: 700;
+            margin-bottom: 15px;
+          }
+          p {
+            color: #6b7280;
+            font-size: 16px;
+            margin: 15px 0;
+          }
+          .btn-continue {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            border: none;
+            color: white;
+            padding: 15px 60px;
+            font-size: 16px;
+            font-weight: 600;
+            border-radius: 50px;
+            margin-top: 30px;
+            cursor: pointer;
+            transition: transform 0.3s, box-shadow 0.3s;
+          }
+          .btn-continue:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 25px rgba(102, 126, 234, 0.4);
+            color: white;
+            text-decoration: none;
+          }
+        </style>
+      </head>
+      <body>
+        <div class="confirmation-card">
+          <div class="error-icon">
+            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
+            </svg>
+          </div>
+          <h1>Payment Failed</h1>
+          <p>We couldn't process your payment. Please try again.</p>
+          <a href="/wallet" class="btn btn-continue">Return to Wallet</a>
+        </div>
+      </body>
+      </html>
+    `);
+  }
+});
+
+// Direct payment endpoints removed: application now supports wallet purchases and wallet funding only.
+
+// ====================
+// ENHANCED DATA PURCHASE ROUTES
+// ====================
+
+// Helper function to map internal network names to DataMart network identifiers
+function mapNetworkToDataMart(network) {
+  const networkMap = {
+    'mtn': 'YELLO',
+    'at': 'AT_PREMIUM',
+    'airteltigo': 'AT_PREMIUM',
+    'vodafone': 'TELECEL',
+    'telecel': 'TELECEL'
+  };
+  return networkMap[network?.toLowerCase()] || network?.toUpperCase();
+}
+
+// Helper function to check if DataMart error is due to provider balance
+function isProviderBalanceError(datamartData) {
+  if (!datamartData) return false;
+  
+  const message = String(datamartData.message || datamartData.error || '').toLowerCase();
+  const details = String(datamartData.details || '').toLowerCase();
+  const fullResponse = JSON.stringify(datamartData || {}).toLowerCase();
+  
+  // Check for common DataMart balance error messages
+  const balanceErrorKeywords = [
+    'insufficient', 'balance', 'low balance', 'out of stock', 'unavailable', 
+    'account balance', 'no stock', 'low', 'rejected', 'insufficient funds'
+  ];
+  
+  // Check if any balance error keyword appears in message, details, or full response
+  return balanceErrorKeywords.some(keyword => 
+    message.includes(keyword) || 
+    details.includes(keyword) ||
+    fullResponse.includes(keyword)
+  );
+}
+
+// ============================================
+// PAYSTACK WEBHOOK ENDPOINT - Automatic Payment Confirmation
+// ============================================
+// This endpoint receives automatic payment notifications from Paystack
+// Configure in Paystack Dashboard: Settings > Webhook URL
+// Set to: https://datasell.store/api/paystack/webhook
+app.post('/api/paystack/webhook', async (req, res) => {
+  try {
+    // Verify webhook signature from Paystack
+    const paystackSignature = req.headers['x-paystack-signature'];
+    
+    // Use rawBody if available, otherwise stringify the body
+    const bodyForSignature = req.rawBody || JSON.stringify(req.body);
+    
+    // Compute HMAC-SHA512 signature
+    const crypto = require('crypto');
+    const hash = crypto
+      .createHmac('sha512', process.env.PAYSTACK_SECRET_KEY)
+      .update(bodyForSignature)
+      .digest('hex');
+
+    // Verify signature matches
+    if (hash !== paystackSignature) {
+      console.warn('⚠️ Invalid webhook signature from Paystack');
+      console.warn(`Expected: ${paystackSignature}, Got: ${hash}`);
+      return res.status(401).json({ success: false, error: 'Unauthorized' });
+    }
+
+    const event = req.body.event;
+    const data = req.body.data;
+
+    console.log(`🔔 Webhook event received: ${event}`);
+    console.log(`📋 Webhook data:`, {
+      event: event,
+      reference: data?.reference,
+      status: data?.status,
+      amount: data?.amount,
+      metadata: data?.metadata
+    });
+
+    // Only process successful charge events
+    if (event === 'charge.success' && data?.status === 'success') {
+      const { reference, amount, metadata } = data;
+      const userId = metadata?.userId;
+      const originalAmount = metadata?.originalAmount || (amount / 100);
+      const amountInCedis = parseFloat(originalAmount);
+
+      // Validate required fields
+      if (!userId) {
+        console.error('❌ No userId in webhook metadata');
+        return res.status(400).json({ success: false, error: 'Missing userId' });
+      }
+
+      // Check if payment already processed to prevent duplicate credits
+      const paymentsRef = admin.database().ref('payments');
+      const existingPaymentSnapshot = await paymentsRef
+        .orderByChild('reference')
+        .equalTo(reference)
+        .once('value');
+
+      if (existingPaymentSnapshot.exists()) {
+        console.warn(`⚠️ Payment already processed: ${reference}`);
+        return res.status(200).json({ 
+          success: true, 
+          message: 'Payment already processed',
+          duplicate: true 
+        });
+      }
+
+      // Get user and credit wallet
+      const userRef = admin.database().ref('users/' + userId);
+      const userSnapshot = await userRef.once('value');
+      
+      if (!userSnapshot.exists()) {
+        console.error(`❌ User not found: ${userId}`);
+        return res.status(404).json({ success: false, error: 'User not found' });
+      }
+
+      const userData = userSnapshot.val();
+      const currentBalance = userData.walletBalance || 0;
+
+      // Credit the wallet
+      await userRef.update({
+        walletBalance: currentBalance + amountInCedis,
+        lastWalletUpdate: new Date().toISOString()
+      });
+
+      console.log(`✅ Wallet credited via webhook: ${userId} received ₵${amountInCedis}`);
+
+      // Record the payment
+      const paymentRef = admin.database().ref('payments').push();
+      await paymentRef.set({
+        userId,
+        amount: amountInCedis,
+        paystackAmount: amount / 100,
+        fee: (amount / 100) - amountInCedis,
+        reference,
+        status: 'success',
+        source: 'webhook',
+        paystackData: {
+          status: data.status,
+          authorization: data.authorization || {},
+          customer: data.customer || {},
+          created_at: data.created_at,
+          paid_at: data.paid_at
+        },
+        timestamp: new Date().toISOString()
+      });
+
+      // Send SMS notification asynchronously (don't wait for it)
+      try {
+        const username = userData.displayName || userData.username || userData.name || userData.email || 'Customer';
+        const phoneFallback = userData.phone || userData.phoneNumber || '';
+        const message = `Hello ${username}, your DataSell wallet has been credited with ₵${amountInCedis}. Thank you for your purchase!`;
+        sendSmsToUser(userId, phoneFallback, message);
+      } catch (smsErr) {
+        console.error('❌ Webhook SMS error:', smsErr);
+        // Don't fail the webhook response if SMS fails
+      }
+
+      // Send notification to user
+      try {
+        const notificationRef = admin.database().ref('notifications').push();
+        await notificationRef.set({
+          userId,
+          title: '💰 Wallet Funded',
+          message: `Your wallet has been credited with ₵${amountInCedis}`,
+          type: 'wallet_funded',
+          amount: amountInCedis,
+          reference,
+          read: false,
+          timestamp: new Date().toISOString()
+        });
+      } catch (notifErr) {
+        console.error('❌ Webhook notification error:', notifErr);
+        // Don't fail the webhook response if notification fails
+      }
+
+      // Log the successful webhook processing
+      const logsRef = admin.database().ref('webhook_logs').push();
+      await logsRef.set({
+        event: event,
+        reference: reference,
+        userId: userId,
+        status: 'processed',
+        amount: amountInCedis,
+        timestamp: new Date().toISOString()
+      });
+
+      console.log(`✅ Webhook processed successfully for reference: ${reference}`);
+      return res.status(200).json({ 
+        success: true, 
+        message: 'Wallet credited successfully',
+        amount: amountInCedis,
+        newBalance: currentBalance + amountInCedis
+      });
+    } else if (event === 'charge.success') {
+      console.warn(`⚠️ Charge success but status is not success: ${data.status}`);
+      return res.status(200).json({ success: true, message: 'Non-success charge event ignored' });
+    } else {
+      // Log other events for monitoring but don't process
+      console.log(`ℹ️ Non-payment event received: ${event}`);
+      return res.status(200).json({ success: true, message: 'Event received' });
+    }
+  } catch (error) {
+    console.error('❌ Webhook processing error:', {
+      message: error.message,
+      stack: error.stack
+    });
+
+    // Log failed webhook processing
+    try {
+      const logsRef = admin.database().ref('webhook_logs').push();
+      await logsRef.set({
+        event: 'error',
+        error: error.message,
+        status: 'failed',
+        timestamp: new Date().toISOString()
+      });
+    } catch (logErr) {
+      console.error('Failed to log webhook error:', logErr);
+    }
+
+    // Always return 200 to Paystack to prevent retries, but log the error
+    return res.status(200).json({ 
+      success: false, 
+      error: 'Webhook processing failed',
+      message: error.message
+    });
+  }
+});
+
+// Enhanced Get packages
+app.get('/api/packages/:network', requireAuth, async (req, res) => {
+  try {
+    const { network } = req.params;
+    
+    if (!['mtn', 'at'].includes(network)) {
+      return res.status(400).json({ 
+        success: false, 
+        error: 'Invalid network' 
+      });
+    }
+
+    // Use cache if available, otherwise fetch from database
+    if (!packageCache[network] || packageCache[network].length === 0) {
+      const packagesSnapshot = await admin.database().ref('packages/' + network).once('value');
+      const packages = packagesSnapshot.val() || {};
+      const packagesArray = Object.values(packages).filter(pkg => pkg.active !== false);
+      
+      packagesArray.sort((a, b) => {
+        const getVolume = (pkg) => {
+          if (pkg.name) {
+            const volumeMatch = pkg.name.match(/\d+/);
+            return volumeMatch ? parseInt(volumeMatch[0]) : 0;
+          }
+          return 0;
+        };
+        return getVolume(a) - getVolume(b);
+      });
+      
+      packageCache[network] = packagesArray;
+    }
+    
+    res.json({ 
+      success: true, 
+      packages: packageCache[network] || []
+    });
+  } catch (error) {
+    console.error('Packages fetch error:', error);
+    res.status(500).json({ 
+      success: false, 
+      error: 'Failed to fetch packages' 
+    });
+  }
+});
+
+// Enhanced Purchase with wallet
+app.post('/api/purchase-data', requireAuth, async (req, res) => {
+  let transactionRef = null;
+  
+  try {
+    const { network, volume, phoneNumber, amount, packageName } = req.body;
+    const userId = req.session.user.uid;
+    
+    console.log('🔄 Purchase request received:', { network, volume, phoneNumber, amount, packageName });
+
+    // Validation
+    if (!network || !volume || !phoneNumber || !amount || !packageName) {
+      return res.status(400).json({ 
+        success: false, 
+        error: 'All fields are required' 
+      });
+    }
+
+    if (!/^\d{10}$/.test(phoneNumber)) {
+      return res.status(400).json({ 
+        success: false, 
+        error: 'Phone number must be 10 digits' 
+      });
+    }
+
+    // 🚫 CHECK IF TARGET PHONE IS BLOCKED (NEW)
+    const phoneValidation = await validatePhoneOrder(phoneNumber);
+    if (!phoneValidation.valid) {
+      console.warn(`⚠️ Attempt to purchase data to blocked phone: ${phoneNumber} by user ${userId}`);
+      await logBlockedPhoneAttempt(phoneNumber, 'order', userId, {
+        network: network,
+        amount: amount,
+        ip: req.ip,
+        userAgent: req.get('user-agent')
+      });
+      return res.status(403).json({ 
+        success: false, 
+        error: phoneValidation.error 
+      });
+    }
+
+    // Convert volume to GB for DataMart (they expect capacity in GB)
+    let volumeValue = volume;
+    let capacityGB = volumeValue;
+    if (volumeValue && parseInt(volumeValue) >= 100) {
+      // If volume is in MB, convert to GB
+      capacityGB = (parseInt(volumeValue) / 1000).toString();
+      console.log(`🔢 VOLUME CONVERTED: ${volume}MB → ${capacityGB}GB`);
+    }
+
+    const userRef = admin.database().ref('users/' + userId);
+    const userSnapshot = await userRef.once('value');
+    const userData = userSnapshot.val();
+    
+    if (!userData) {
+      return res.status(404).json({ 
+        success: false, 
+        error: 'User not found' 
+      });
+    }
+
+    if (userData.walletBalance < amount) {
+      return res.status(400).json({ 
+        success: false, 
+        error: 'Insufficient wallet balance' 
+      });
+    }
+
+    const reference = `DS-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+    
+    // Create order record first
+    transactionRef = admin.database().ref('transactions').push();
+    const transactionId = transactionRef.key; // Get the Firebase ID
+    
+    const initialOrderData = {
+      userId,
+      network,
+      packageName,
+      volume: volumeValue,
+      phoneNumber,
+      amount,
+      status: 'processing',
+      reference: reference,
+      transactionId: null,
+      datamartTransactionId: null,
+      datamartResponse: null,
+      datamartConfirmed: false,
+      timestamp: new Date().toISOString(),
+      paymentMethod: 'wallet'
+    };
+    
+    await transactionRef.set(initialOrderData);
+    console.log('✅ Order record created in Firebase:', {
+      firebaseId: transactionId,
+      reference: reference,
+      userId: userId,
+      network: network,
+      packageName: packageName,
+      amount: amount
+    });
+
+    // Notify user that payment/order is received and processing
+    try {
+      const notifyMsg = `Payment received. Your data package will be delivered within 1 to 30 minutes. If any troubles contact support on 0553843255.`;
+      await sendSmsToUser(userId, phoneNumber, notifyMsg);
+      console.log('📩 Order-created SMS sent for transaction', transactionId);
+    } catch (smsErr) {
+      console.error('❌ Failed to send order-created SMS for', transactionId, smsErr);
+    }
+
+    // Map network to DataMart format
+    const datamartNetwork = mapNetworkToDataMart(network);
+    
+    // DataMart API call
+    const datamartResponse = await axios.post(
+      'https://api.datamartgh.shop/api/developer/purchase',
+      {
+        phoneNumber: phoneNumber,
+        network: datamartNetwork,
+        capacity: capacityGB,
+        gateway: 'wallet'
+      },
+      {
+        headers: {
+          'X-API-Key': process.env.DATAMART_API_KEY,
+          'Content-Type': 'application/json'
+        },
+        timeout: 30000
+      }
+    );
+
+    const datamartData = datamartResponse.data;
+    console.log('📡 DataMart response:', datamartData);
+    console.log('📡 DataMart response full:', JSON.stringify(datamartData, null, 2));
+
+    // Handle DataMart response structure
+    if (datamartData.status === 'success' && datamartData.data) {
+      // SUCCESS: Deduct balance and update order
+      const newBalance = userData.walletBalance - amount;
+      await userRef.update({ walletBalance: newBalance });
+
+      const purchaseData = datamartData.data;
+      await transactionRef.update({
+        status: 'success',
+        transactionId: purchaseData.purchaseId || purchaseData.transactionReference,
+        datamartTransactionId: purchaseData.purchaseId || purchaseData.transactionReference,
+        datamartResponse: purchaseData
+      });
+
+      console.log('✅ Purchase successful, order updated to success:', {
+        reference: reference,
+        transactionId: purchaseData.purchaseId || purchaseData.transactionReference,
+        newBalance: newBalance
+      });
+
+      res.json({ 
+        success: true, 
+        data: purchaseData,
+        newBalance: newBalance,
+        reference: reference,
+        message: 'Data purchase successful!'
+      });
+    } else {
+      // FAILURE: Update order status but DON'T deduct balance
+      await transactionRef.update({
+        status: 'failed',
+        datamartResponse: datamartData,
+        reason: datamartData.message || 'Purchase failed'
+      });
+
+      console.log('❌ Purchase failed, order updated to failed');
+
+      // Check if it's a provider balance issue
+      const isOutOfStock = isProviderBalanceError(datamartData);
+      console.log('🔍 Balance error check:', { isOutOfStock, datamartData });
+      const errorMessage = isOutOfStock ? 'Out of Stock - Please try again later' : (datamartData.message || 'Purchase failed');
+
+      res.status(400).json({ 
+        success: false, 
+        error: errorMessage,
+        isOutOfStock: isOutOfStock
+      });
+    }
+
+  } catch (error) {
+    console.error('❌ Purchase error:', error);
+    
+    // Check if it's an Axios error with response data (e.g., 400 from DataMart)
+    if (error.response && error.response.data) {
+      const datamartErrorData = error.response.data;
+      console.log('📡 DataMart error response:', datamartErrorData);
+      
+      if (transactionRef) {
+        await transactionRef.update({
+          status: 'failed',
+          datamartResponse: datamartErrorData,
+          reason: datamartErrorData.message || 'DataMart error'
+        });
+      }
+      
+      // Check if it's a provider balance issue
+      const isOutOfStock = isProviderBalanceError(datamartErrorData);
+      console.log('🔍 Balance error check (from catch):', { isOutOfStock, datamartErrorData });
+      
+      // Provide clearer error messages
+      let errorMessage;
+      if (isOutOfStock) {
+        // Check if it's specifically a provider wallet balance issue
+        if (datamartErrorData.message?.toLowerCase().includes('insufficient wallet balance') || 
+            datamartErrorData.message?.toLowerCase().includes('insufficient balance')) {
+          errorMessage = 'Service temporarily unavailable - Provider balance issue. Please try again later or contact support.';
+        } else {
+          errorMessage = 'Out of Stock - Please try again later';
+        }
+      } else {
+        errorMessage = datamartErrorData.message || 'Purchase failed';
+      }
+      
+      return res.status(400).json({ 
+        success: false, 
+        error: errorMessage,
+        isOutOfStock: isOutOfStock,
+        details: process.env.NODE_ENV !== 'production' ? datamartErrorData : undefined
+      });
+    }
+    
+    // Handle other errors
+    if (transactionRef) {
+      await transactionRef.update({
+        status: 'failed',
+        datamartResponse: { error: error.message },
+        reason: 'System error: ' + error.message
+      });
+    }
+    
+    let errorMessage = 'Purchase failed';
+    if (error.code === 'ECONNABORTED') {
+      errorMessage = 'Request timeout. Please check your connection and try again.';
+    }
+    
+    res.status(500).json({ 
+      success: false, 
+      error: errorMessage 
+    });
+  }
+});
+
+// ====================
+// REFUND WALLET ON FAILED PURCHASE
+// ====================
+
+async function refundWallet(userId, amount) {
+  try {
+    const userRef = admin.database().ref(`users/${userId}`);
+    const userSnap = await userRef.once('value');
+    const user = userSnap.val();
+
+    if (!user) {
+      console.error(`User ${userId} not found. Refund failed.`);
+      return;
+    }
+
+    const updatedBalance = (user.walletBalance || 0) + amount;
+    await userRef.update({ walletBalance: updatedBalance });
+
+    console.log(`Refunded ₵${amount} to user ${userId}. New balance: ₵${updatedBalance}`);
+  } catch (error) {
+    console.error(`Failed to refund ₵${amount} to user ${userId}:`, error);
+  }
+}
+
+// Example route for purchase
+app.post('/api/purchase', async (req, res) => {
+  const { userId, amount, purchaseDetails } = req.body;
+
+  try {
+    // Deduct wallet balance
+    const userRef = admin.database().ref(`users/${userId}`);
+    const userSnap = await userRef.once('value');
+    const user = userSnap.val();
+
+    if (!user || user.walletBalance < amount) {
+      return res.status(400).json({ success: false, error: 'Insufficient wallet balance' });
+    }
+
+    const newBalance = user.walletBalance - amount;
+    await userRef.update({ walletBalance: newBalance });
+
+    console.log(`Deducted ₵${amount} from user ${userId}. New balance: ₵${newBalance}`);
+
+    // Simulate purchase process
+    const purchaseSuccess = Math.random() > 0.2; // 80% success rate for simulation
+
+    if (purchaseSuccess) {
+      // Handle successful purchase
+      console.log(`Purchase successful for user ${userId}`);
+      return res.json({ success: true, message: 'Purchase completed successfully' });
+    } else {
+      // Refund on failure
+      console.log(`Purchase failed for user ${userId}. Refunding ₵${amount}...`);
+      await refundWallet(userId, amount);
+      return res.status(500).json({ success: false, error: 'Purchase failed. Amount refunded to wallet.' });
+    }
+  } catch (error) {
+    console.error('Error during purchase:', error);
+    return res.status(500).json({ success: false, error: 'An error occurred during the purchase process.' });
+  }
+});
+
+// ====================
+// ADDITIONAL ADMIN ENDPOINTS
+// ====================
+
+// Admin Packages Management
+app.get('/api/admin/packages', requireAdmin, async (req, res) => {
+  try {
+    // Use cache if available
+    if (!packageCache.isInitialized) {
+      const packagesSnapshot = await admin.database().ref('packages').once('value');
+      const packages = packagesSnapshot.val() || {};
+      
+      packageCache.mtn = Object.entries(packages.mtn || {}).map(([key, pkg]) => ({
+        id: key,
+        ...pkg
+      }));
+      
+      packageCache.at = Object.entries(packages.at || {}).map(([key, pkg]) => ({
+        id: key,
+        ...pkg
+      }));
+      packageCache.isInitialized = true;
+    }
+    
+    res.json({ 
+      success: true, 
+      packages: {
+        mtn: packageCache.mtn,
+        at: packageCache.at
+      }
+    });
+  } catch (error) {
+    console.error('Admin packages error:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// Update package price
+app.post('/api/admin/packages/update-price', requireAdmin, async (req, res) => {
+  try {
+    const { network, packageId, newPrice } = req.body;
+    
+    console.log('🔄 Updating package:', { network, packageId, newPrice });
+
+    if (!network || !packageId || !newPrice) {
+      return res.status(400).json({ 
+        success: false, 
+        error: 'Network, packageId, and newPrice are required' 
+      });
+    }
+
+    const packagesRef = admin.database().ref(`packages/${network}`);
+    const packagesSnapshot = await packagesRef.once('value');
+    const packages = packagesSnapshot.val() || {};
+    
+    let packageKey = packageId;
+    
+    // Remove network prefix if present
+    if (packageId.startsWith('mtn-')) {
+      packageKey = packageId.replace('mtn-', '');
+    } else if (packageId.startsWith('at-')) {
+      packageKey = packageId.replace('at-', '');
+    }
+    
+    // Check if package exists
+    if (!packages[packageKey]) {
+      return res.status(404).json({ 
+        success: false, 
+        error: `Package not found. Available packages: ${Object.keys(packages).join(', ')}` 
+      });
+    }
+
+    const oldPrice = packages[packageKey].price;
+    const packageName = packages[packageKey].name;
+
+    // Update the price
+    await admin.database().ref(`packages/${network}/${packageKey}`).update({
+      price: parseFloat(newPrice)
+    });
+
+    // Update cache
+    if (packageCache[network]) {
+      const packageIndex = packageCache[network].findIndex(pkg => pkg.id === packageKey);
+      if (packageIndex !== -1) {
+        packageCache[network][packageIndex].price = parseFloat(newPrice);
+      }
+    }
+
+    // Log admin action
+    const logRef = admin.database().ref('adminLogs').push();
+    await logRef.set({
+      adminId: req.session.user.uid,
+      action: 'update_package_price',
+      targetPackage: packageKey,
+      details: `Updated ${network} package ${packageName} from ₵${oldPrice} to ₵${newPrice}`,
+      timestamp: new Date().toISOString(),
+      ip: req.ip
+    });
+
+    res.json({ 
+      success: true, 
+      message: `"${packageName}" price updated to ₵${newPrice}`,
+      oldPrice: oldPrice,
+      newPrice: parseFloat(newPrice),
+      packageName: packageName
+    });
+  } catch (error) {
+    console.error('Update package error:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// Toggle package active status
+app.post('/api/admin/packages/toggle-active', requireAdmin, async (req, res) => {
+  try {
+    const { network, packageId } = req.body;
+    
+    if (!network || !packageId) {
+      return res.status(400).json({ 
+        success: false, 
+        error: 'Network and packageId are required' 
+      });
+    }
+
+    const packageRef = admin.database().ref(`packages/${network}/${packageId}`);
+    const packageSnapshot = await packageRef.once('value');
+    
+    if (!packageSnapshot.exists()) {
+      return res.status(404).json({ success: false, error: 'Package not found' });
+    }
+
+    const currentStatus = packageSnapshot.val().active !== false;
+    await packageRef.update({ active: !currentStatus });
+
+    // Update cache
+    if (packageCache[network]) {
+      const packageIndex = packageCache[network].findIndex(pkg => pkg.id === packageId);
+      if (packageIndex !== -1) {
+        packageCache[network][packageIndex].active = !currentStatus;
+      }
+    }
+
+    // Log admin action
+    const logRef = admin.database().ref('adminLogs').push();
+    await logRef.set({
+      adminId: req.session.user.uid,
+      action: 'toggle_package_status',
+      targetPackage: packageId,
+      details: `Package ${!currentStatus ? 'activated' : 'deactivated'}`,
+      timestamp: new Date().toISOString(),
+      ip: req.ip
+    });
+
+    res.json({ 
+      success: true, 
+      message: `Package ${!currentStatus ? 'activated' : 'deactivated'}`,
+      active: !currentStatus
+    });
+  } catch (error) {
+    console.error('Toggle package error:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// Create a new package
+app.post('/api/admin/packages/create', requireAdmin, async (req, res) => {
+  try {
+    const { network, id, name, price, validity, active } = req.body;
+
+    if (!network || !id || !name || price === undefined) {
+      return res.status(400).json({ success: false, error: 'network, id, name and price are required' });
+    }
+
+    const packageRef = admin.database().ref(`packages/${network}/${id}`);
+    const snap = await packageRef.once('value');
+    if (snap.exists()) {
+      return res.status(400).json({ success: false, error: 'Package with that id already exists' });
+    }
+
+    const payload = {
+      name,
+      price: parseFloat(price),
+      validity: validity || null,
+      active: active === false ? false : true,
+      createdAt: new Date().toISOString()
+    };
+
+    await packageRef.set(payload);
+
+    // Update cache if present
+    if (packageCache[network]) {
+      packageCache[network].push({ id, ...payload });
+    }
+
+    // Log admin action
+    const logRef = admin.database().ref('adminLogs').push();
+    await logRef.set({
+      adminId: req.session.user.uid,
+      action: 'create_package',
+      targetPackage: id,
+      details: `Created package ${id} (${name}) on ${network}`,
+      timestamp: new Date().toISOString(),
+      ip: req.ip
+    });
+
+    res.json({ success: true, message: 'Package created successfully', package: { id, ...payload } });
+  } catch (error) {
+    console.error('Create package error:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// Delete a package
+app.post('/api/admin/packages/delete', requireAdmin, async (req, res) => {
+  try {
+    const { network, packageId } = req.body;
+
+    if (!network || !packageId) {
+      return res.status(400).json({ 
+        success: false, 
+        error: 'Network and packageId are required' 
+      });
+    }
+
+    const packageRef = admin.database().ref(`packages/${network}/${packageId}`);
+    const packageSnapshot = await packageRef.once('value');
+    
+    if (!packageSnapshot.exists()) {
+      return res.status(404).json({ success: false, error: 'Package not found' });
+    }
+
+    const packageData = packageSnapshot.val();
+    const packageName = packageData.name;
+
+    // Delete the package
+    await packageRef.remove();
+
+    // Update cache
+    if (packageCache[network]) {
+      packageCache[network] = packageCache[network].filter(pkg => pkg.id !== packageId);
+    }
+
+    // Log admin action
+    const logRef = admin.database().ref('adminLogs').push();
+    await logRef.set({
+      adminId: req.session.user.uid,
+      action: 'delete_package',
+      targetPackage: packageId,
+      details: `Deleted package ${packageId} (${packageName}) from ${network}`,
+      timestamp: new Date().toISOString(),
+      ip: req.ip
+    });
+
+    res.json({ 
+      success: true, 
+      message: `Package "${packageName}" deleted successfully`
+    });
+  } catch (error) {
+    console.error('Delete package error:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// Admin Transactions Management
+app.get('/api/admin/transactions', requireAdmin, async (req, res) => {
+  try {
+    const { status, network, dateFrom, dateTo, search, limit } = req.query;
+    
+    const transactionsSnapshot = await admin.database().ref('transactions').once('value');
+    const usersSnapshot = await admin.database().ref('users').once('value');
+    
+    let transactions = Object.entries(transactionsSnapshot.val() || {}).map(([id, transaction]) => ({
+      id,
+      ...transaction
+    }));
+
+    const users = usersSnapshot.val() || {};
+
+    // Apply filters
+    let filteredTransactions = transactions;
+
+    if (status && status !== 'all') {
+      filteredTransactions = filteredTransactions.filter(t => t.status === status);
+    }
+    
+    if (network && network !== 'all') {
+      filteredTransactions = filteredTransactions.filter(t => t.network === network);
+    }
+    
+    if (dateFrom) {
+      filteredTransactions = filteredTransactions.filter(t => 
+        new Date(t.timestamp) >= new Date(dateFrom)
+      );
+    }
+    
+    if (dateTo) {
+      const endDate = new Date(dateTo);
+      endDate.setHours(23, 59, 59, 999);
+      filteredTransactions = filteredTransactions.filter(t => 
+        new Date(t.timestamp) <= endDate
+      );
+    }
+    
+    if (search) {
+      const searchLower = search.toLowerCase();
+      filteredTransactions = filteredTransactions.filter(t => 
+        t.phoneNumber?.includes(search) ||
+        t.reference?.includes(search) ||
+        t.packageName?.toLowerCase().includes(searchLower) ||
+        t.userId?.includes(search)
+      );
+    }
+
+    // Apply limit if specified
+    if (limit) {
+      filteredTransactions = filteredTransactions.slice(0, parseInt(limit));
+    }
+
+    // Add user information to transactions
+    const transactionsWithUsers = filteredTransactions.map(transaction => {
+      const user = users[transaction.userId];
+      return {
+        ...transaction,
+        userName: user ? `${user.firstName} ${user.lastName}` : 'Unknown User',
+        userEmail: user?.email || 'N/A'
+      };
+    });
+
+    // Sort by timestamp (newest first)
+    transactionsWithUsers.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
+
+    res.json({ success: true, transactions: transactionsWithUsers });
+  } catch (error) {
+    console.error('Admin transactions error:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// Get transaction details
+app.get('/api/admin/transactions/:id', requireAdmin, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const transactionSnapshot = await admin.database().ref(`transactions/${id}`).once('value');
+    const transaction = transactionSnapshot.val();
+
+    if (!transaction) {
+      return res.status(404).json({ success: false, error: 'Transaction not found' });
+    }
+
+    const userSnapshot = await admin.database().ref(`users/${transaction.userId}`).once('value');
+    const user = userSnapshot.val();
+
+    res.json({
+      success: true,
+      transaction: {
+        id,
+        ...transaction,
+        userName: user ? `${user.firstName} ${user.lastName}` : 'Unknown User',
+        userEmail: user?.email || 'N/A'
+      }
+    });
+  } catch (error) {
+    console.error('Get transaction error:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// Refund transaction
+app.post('/api/admin/transactions/:id/refund', requireAdmin, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { reason } = req.body;
+
+    const transactionSnapshot = await admin.database().ref(`transactions/${id}`).once('value');
+    const transaction = transactionSnapshot.val();
+
+    if (!transaction) {
+      return res.status(404).json({ success: false, error: 'Transaction not found' });
+    }
+
+    if (transaction.status === 'refunded') {
+      return res.status(400).json({ success: false, error: 'Transaction already refunded' });
+    }
+
+    // Update transaction status
+    await admin.database().ref(`transactions/${id}`).update({
+      status: 'refunded',
+      refundedAt: new Date().toISOString(),
+      refundReason: reason || 'Admin refund'
+    });
+
+    // Refund amount to user wallet
+    const userSnapshot = await admin.database().ref(`users/${transaction.userId}`).once('value');
+    const user = userSnapshot.val();
+
+    if (user) {
+      await admin.database().ref(`users/${transaction.userId}`).update({
+        walletBalance: (user.walletBalance || 0) + transaction.amount,
+        updatedAt: new Date().toISOString()
+      });
+    }
+
+    // Log admin action
+    await admin.database().ref('adminLogs').push({
+      adminId: req.session.userId,
+      action: 'refund_transaction',
+      details: `Refunded transaction ${id} for user ${transaction.userId.substring(0, 8)}...`,
+      timestamp: new Date().toISOString(),
+      ip: req.ip
+    });
+
+    res.json({ success: true, message: 'Transaction refunded successfully' });
+  } catch (error) {
+    console.error('Refund transaction error:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// Toggle transaction delivery status
+app.post('/api/admin/transactions/:id/toggle-delivery', requireAdmin, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const transactionSnapshot = await admin.database().ref(`transactions/${id}`).once('value');
+    const transaction = transactionSnapshot.val();
+
+    if (!transaction) {
+      return res.status(404).json({ success: false, error: 'Transaction not found' });
+    }
+
+    const newDeliveredStatus = !transaction.delivered;
+    await admin.database().ref(`transactions/${id}`).update({
+      delivered: newDeliveredStatus,
+      deliveredAt: newDeliveredStatus ? new Date().toISOString() : null,
+      updatedAt: new Date().toISOString()
+    });
+
+    // Log admin action
+    await admin.database().ref('adminLogs').push({
+      adminId: req.session.userId,
+      action: 'toggle_delivery',
+      details: `${newDeliveredStatus ? 'Marked' : 'Unmarkked'} transaction ${id} as ${newDeliveredStatus ? 'delivered' : 'pending'}`,
+      timestamp: new Date().toISOString(),
+      ip: req.ip
+    });
+
+    res.json({ 
+      success: true, 
+      message: newDeliveredStatus ? 'Marked as delivered' : 'Marked as pending'
+    });
+  } catch (error) {
+    console.error('Toggle delivery error:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// Admin Pricing Groups
+app.get('/api/admin/pricing/groups', requireAdmin, async (req, res) => {
+  try {
+    const pricingSnapshot = await admin.database().ref('pricingGroups').once('value');
+    const pricing = pricingSnapshot.val() || {
+      regular: { discount: 0, name: 'Regular Users' },
+      vip: { discount: 10, name: 'VIP Users' },
+      premium: { discount: 15, name: 'Premium Users' }
+    };
+
+    res.json({ success: true, pricingGroups: pricing });
+  } catch (error) {
+    console.error('Pricing groups error:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// Update pricing group discounts
+app.post('/api/admin/pricing/groups/update', requireAdmin, async (req, res) => {
+  try {
+    const { group, discount } = req.body;
+    
+    if (!group || discount === undefined || discount < 0 || discount > 100) {
+      return res.status(400).json({ success: false, error: 'Invalid group or discount value' });
+    }
+
+    await admin.database().ref(`pricingGroups/${group}`).update({
+      discount: parseFloat(discount),
+      updatedAt: new Date().toISOString()
+    });
+
+    // Log admin action
+    await admin.database().ref('adminLogs').push({
+      adminId: req.session.userId,
+      action: 'update_pricing_group',
+      details: `Updated ${group} group discount to ${discount}%`,
+      timestamp: new Date().toISOString(),
+      ip: req.ip
+    });
+
+    res.json({ success: true, message: `${group} group discount updated to ${discount}%` });
+  } catch (error) {
+    console.error('Update pricing group error:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// Update user pricing group
+app.post('/api/admin/users/:uid/update-role', requireAdmin, async (req, res) => {
+  try {
+    const { uid } = req.params;
+    const { role } = req.body;
+
+    if (!role || !['regular', 'vip', 'premium'].includes(role)) {
+      return res.status(400).json({ success: false, error: 'Invalid pricing group' });
+    }
+
+    await admin.database().ref(`users/${uid}`).update({
+      pricingGroup: role,
+      updatedAt: new Date().toISOString()
+    });
+
+    // Log admin action
+    await admin.database().ref('adminLogs').push({
+      adminId: req.session.userId,
+      action: 'update_user_role',
+      details: `Changed user ${uid.substring(0, 8)}... pricing group to ${role}`,
+      timestamp: new Date().toISOString(),
+      ip: req.ip
+    });
+
+    res.json({ success: true, message: `User pricing group updated to ${role}` });
+  } catch (error) {
+    console.error('Update user role error:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// Toggle user suspension
+app.post('/api/admin/users/:uid/toggle-suspend', requireAdmin, async (req, res) => {
+  try {
+    const { uid } = req.params;
+    
+    const userSnapshot = await admin.database().ref(`users/${uid}`).once('value');
+    const user = userSnapshot.val();
+
+    if (!user) {
+      return res.status(404).json({ success: false, error: 'User not found' });
+    }
+
+    const newSuspended = !user.suspended;
+    await admin.database().ref(`users/${uid}`).update({
+      suspended: newSuspended,
+      suspendedAt: newSuspended ? new Date().toISOString() : null,
+      updatedAt: new Date().toISOString()
+    });
+
+    // Log admin action
+    await admin.database().ref('adminLogs').push({
+      adminId: req.session.userId,
+      action: newSuspended ? 'suspend_user' : 'activate_user',
+      details: `${newSuspended ? 'Suspended' : 'Activated'} user ${uid.substring(0, 8)}...`,
+      timestamp: new Date().toISOString(),
+      ip: req.ip
+    });
+
+    res.json({ 
+      success: true, 
+      message: newSuspended ? 'User suspended' : 'User activated'
+    });
+  } catch (error) {
+    console.error('Toggle suspension error:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// Add funds to user wallet
+app.post('/api/admin/users/:uid/add-funds', requireAdmin, async (req, res) => {
+  try {
+    const { uid } = req.params;
+    const { amount, note } = req.body;
+
+    if (!amount || isNaN(amount) || amount <= 0) {
+      return res.status(400).json({ success: false, error: 'Invalid amount' });
+    }
+
+    const userSnapshot = await admin.database().ref(`users/${uid}`).once('value');
+    const user = userSnapshot.val();
+
+    if (!user) {
+      return res.status(404).json({ success: false, error: 'User not found' });
+    }
+
+    const newBalance = (user.walletBalance || 0) + parseFloat(amount);
+    
+    await admin.database().ref(`users/${uid}`).update({
+      walletBalance: newBalance,
+      updatedAt: new Date().toISOString()
+    });
+
+    // Log transaction
+    await admin.database().ref('adminLogs').push({
+      adminId: req.session.userId,
+      action: 'add_funds',
+      details: `Added ₵${amount} to user ${uid.substring(0, 8)}... wallet. Note: ${note || 'N/A'}`,
+      timestamp: new Date().toISOString(),
+      ip: req.ip
+    });
+
+    // Record in transactions
+    await admin.database().ref('transactions').push({
+      userId: uid,
+      type: 'admin_fund',
+      amount: parseFloat(amount),
+      description: `Admin added funds: ${note || 'No note'}`,
+      timestamp: new Date().toISOString(),
+      status: 'completed'
+    });
+
+    res.json({ success: true, message: `₵${amount} added to user wallet` });
+  } catch (error) {
+    console.error('Add funds error:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// Deduct funds from user wallet
+app.post('/api/admin/users/:uid/deduct-funds', requireAdmin, async (req, res) => {
+  try {
+    const { uid } = req.params;
+    const { amount, note } = req.body;
+
+    if (!amount || isNaN(amount) || amount <= 0) {
+      return res.status(400).json({ success: false, error: 'Invalid amount' });
+    }
+
+    const userSnapshot = await admin.database().ref(`users/${uid}`).once('value');
+    const user = userSnapshot.val();
+
+    if (!user) {
+      return res.status(404).json({ success: false, error: 'User not found' });
+    }
+
+    const newBalance = Math.max(0, (user.walletBalance || 0) - parseFloat(amount));
+    
+    await admin.database().ref(`users/${uid}`).update({
+      walletBalance: newBalance,
+      updatedAt: new Date().toISOString()
+    });
+
+    // Log admin action
+    await admin.database().ref('adminLogs').push({
+      adminId: req.session.userId,
+      action: 'deduct_funds',
+      details: `Deducted ₵${amount} from user ${uid.substring(0, 8)}... wallet. Note: ${note || 'N/A'}`,
+      timestamp: new Date().toISOString(),
+      ip: req.ip
+    });
+
+    // Record in transactions
+    await admin.database().ref('transactions').push({
+      userId: uid,
+      type: 'admin_deduction',
+      amount: parseFloat(amount),
+      description: `Admin deducted funds: ${note || 'No note'}`,
+      timestamp: new Date().toISOString(),
+      status: 'completed'
+    });
+
+    res.json({ success: true, message: `₵${amount} deducted from user wallet` });
+  } catch (error) {
+    console.error('Deduct funds error:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// Admin System Status
+app.get('/api/admin/system/status', requireAdmin, async (req, res) => {
+  try {
+    const usersSnapshot = await admin.database().ref('users').once('value');
+    const transactionsSnapshot = await admin.database().ref('transactions').once('value');
+    
+    // Count successful transactions in last 24 hours
+    const transactions = transactionsSnapshot.val() || {};
+    const oneDayAgo = Date.now() - 24 * 60 * 60 * 1000;
+    const recentTransactions = Object.values(transactions).filter(t => 
+      new Date(t.timestamp || 0).getTime() > oneDayAgo
+    ).length;
+    
+    const successfulTransactions = Object.values(transactions).filter(t => 
+      t.status === 'completed' && new Date(t.timestamp || 0).getTime() > oneDayAgo
+    ).length;
+    const successRate = recentTransactions > 0 ? Math.round((successfulTransactions / recentTransactions) * 100) : 0;
+
+    const systemStatus = {
+      datamart: {
+        status: 'online',
+        message: 'Connected'
+      },
+      paystack: {
+        status: 'online',
+        message: 'Connected'
+      },
+      successRate: successRate,
+      recentTransactions: recentTransactions,
+      packageCache: {
+        mtnCount: packageCache.mtn.length,
+        atCount: packageCache.at.length,
+        lastUpdated: packageCache.lastUpdated
+      },
+      server: {
+        status: 'online',
+        uptime: Math.round(process.uptime()),
+        timestamp: new Date().toISOString()
+      },
+      stats: {
+        totalUsers: Object.keys(usersSnapshot.val() || {}).length,
+        totalTransactions: Object.keys(transactions).length
+      }
+    };
+
+    res.json({ success: true, systemStatus: systemStatus });
+  } catch (error) {
+    console.error('System status error:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// Admin Security Logs
+app.get('/api/admin/security/logs', requireAdmin, async (req, res) => {
+  try {
+    const logsSnapshot = await admin.database().ref('adminLogs').once('value');
+    const logs = logsSnapshot.val() || {};
+    
+    const logsArray = Object.entries(logs)
+      .map(([id, log]) => ({ id, ...log }))
+      .sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp))
+      .slice(0, 100); // Return last 100 logs
+
+    res.json({ success: true, logs: logsArray });
+  } catch (error) {
+    console.error('Security logs error:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// ============ DIAGNOSTIC ENDPOINT ============
+// Check which users exist in DB vs Firebase Auth
+app.get('/api/admin/diagnostic-users', requireAuth, async (req, res) => {
+  try {
+    // Only allow admin
+    if (req.session.user.email !== process.env.ADMIN_EMAIL) {
+      return res.status(403).json({ success: false, error: 'Admin only' });
+    }
+
+    // Get all users from database
+    const dbSnapshot = await admin.database().ref('users').once('value');
+    const dbUsers = dbSnapshot.val() || {};
+    const dbUsersList = Object.entries(dbUsers).map(([uid, user]) => ({
+      uid,
+      email: user.email,
+      firstName: user.firstName,
+      walletBalance: user.walletBalance
+    }));
+
+    // Get all users from Firebase Auth
+    const authUsers = [];
+    let nextPageToken;
+    do {
+      const result = await admin.auth().listUsers(1000, nextPageToken);
+      authUsers.push(...result.users.map(u => u.email));
+      nextPageToken = result.pageToken;
+    } while (nextPageToken);
+
+    // Find mismatches
+    const missingInAuth = dbUsersList.filter(u => !authUsers.includes(u.email));
+    const onlyInAuth = authUsers.filter(email => !Object.values(dbUsers).some(u => u.email === email));
+
+    res.json({
+      success: true,
+      summary: {
+        totalInDatabase: dbUsersList.length,
+        totalInAuth: authUsers.length,
+        missingInAuth: missingInAuth.length,
+        onlyInAuth: onlyInAuth.length
+      },
+      missingInAuth: missingInAuth.slice(0, 50), // First 50
+      onlyInAuth: onlyInAuth.slice(0, 50)
+    });
+  } catch (error) {
+    console.error('Diagnostic error:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// ============ SYNC ENDPOINT ============
+// Sync users between Database and Firebase Auth
+app.post('/api/admin/sync-users', requireAuth, async (req, res) => {
+  try {
+    // Only allow admin
+    if (req.session.user.email !== process.env.ADMIN_EMAIL) {
+      return res.status(403).json({ success: false, error: 'Admin only' });
+    }
+
+    console.log('🔄 Starting user sync process...');
+
+    // Get all users from database
+    const dbSnapshot = await admin.database().ref('users').once('value');
+    const dbUsers = dbSnapshot.val() || {};
+
+    // Get all users from Firebase Auth
+    const authUsers = [];
+    let nextPageToken;
+    do {
+      const result = await admin.auth().listUsers(1000, nextPageToken);
+      authUsers.push(...result.users);
+      nextPageToken = result.pageToken;
+    } while (nextPageToken);
+
+    const authEmails = authUsers.map(u => u.email);
+    const dbEmails = Object.values(dbUsers).map(u => u.email);
+
+    // 1. Remove test users from database
+    const testUsersToRemove = [];
+    for (const [uid, user] of Object.entries(dbUsers)) {
+      if (user.email === 'test@example.com') {
+        await admin.database().ref('users/' + uid).remove();
+        testUsersToRemove.push(user.email);
+        console.log(`❌ Removed test user: ${user.email}`);
+      }
+    }
+
+    // 2. Create DB records for users only in Auth
+    const usersCreated = [];
+    for (const authUser of authUsers) {
+      if (!dbEmails.includes(authUser.email)) {
+        const userRef = admin.database().ref('users').push();
+        await userRef.set({
+          firstName: authUser.displayName?.split(' ')[0] || 'User',
+          lastName: authUser.displayName?.split(' ').slice(1).join(' ') || '',
+          email: authUser.email.toLowerCase().trim(),
+          phone: authUser.phoneNumber || '',
+          walletBalance: 0,
+          createdAt: new Date(authUser.metadata.creationTime).toISOString(),
+          isAdmin: authUser.email === process.env.ADMIN_EMAIL,
+          pricingGroup: 'regular',
+          suspended: false,
+          lastLogin: null
+        });
+        usersCreated.push(authUser.email);
+        console.log(`✅ Created DB record for: ${authUser.email}`);
+      }
+    }
+
+    res.json({
+      success: true,
+      summary: {
+        testUsersRemoved: testUsersToRemove.length,
+        dbRecordsCreated: usersCreated.length,
+      },
+      removedUsers: testUsersToRemove,
+      createdUsers: usersCreated,
+      message: 'User sync completed successfully'
+    });
+  } catch (error) {
+    console.error('Sync error:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// ============ SEARCH ENDPOINT ============
+// Search for users by email pattern
+app.get('/api/admin/search-user/:emailPattern', requireAuth, async (req, res) => {
+  try {
+    // Only allow admin
+    if (req.session.user.email !== process.env.ADMIN_EMAIL) {
+      return res.status(403).json({ success: false, error: 'Admin only' });
+    }
+
+    const pattern = req.params.emailPattern.toLowerCase();
+    
+    // Get all users from database
+    const dbSnapshot = await admin.database().ref('users').once('value');
+    const dbUsers = dbSnapshot.val() || {};
+    
+    const matches = [];
+    for (const [uid, user] of Object.entries(dbUsers)) {
+      if (user.email.toLowerCase().includes(pattern)) {
+        matches.push({
+          uid,
+          email: user.email,
+          firstName: user.firstName,
+          lastName: user.lastName,
+          walletBalance: user.walletBalance,
+          createdAt: user.createdAt
+        });
+      }
+    }
+
+    res.json({
+      success: true,
+      pattern: pattern,
+      found: matches.length,
+      matches: matches
+    });
+  } catch (error) {
+    console.error('Search error:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// ============ UPDATE USER EMAIL ENDPOINT ============
+// Update user email in both Auth and Database
+app.post('/api/admin/update-user-email', requireAuth, async (req, res) => {
+  try {
+    // Only allow admin
+    if (req.session.user.email !== process.env.ADMIN_EMAIL) {
+      return res.status(403).json({ success: false, error: 'Admin only' });
+    }
+
+    const { uid, newEmail } = req.body;
+
+    if (!uid || !newEmail) {
+      return res.status(400).json({ 
+        success: false, 
+        error: 'uid and newEmail are required' 
+      });
+    }
+
+    // Validate new email
+    const emailValidation = validateEmail(newEmail.trim());
+    if (!emailValidation.valid) {
+      return res.status(400).json({ 
+        success: false, 
+        error: emailValidation.error 
+      });
+    }
+
+    const trimmedEmail = newEmail.toLowerCase().trim();
+
+    // Check if new email already exists in database
+    const dbSnapshot = await admin.database().ref('users').once('value');
+    const dbUsers = dbSnapshot.val() || {};
+    const emailExists = Object.values(dbUsers).some(u => u.email === trimmedEmail);
+    
+    if (emailExists) {
+      return res.status(400).json({ 
+        success: false, 
+        error: 'Email already exists in system' 
+      });
+    }
+
+    // Update Firebase Auth
+    try {
+      await admin.auth().updateUser(uid, {
+        email: trimmedEmail
+      });
+      console.log(`✅ Firebase Auth email updated for UID ${uid}`);
+    } catch (authError) {
+      console.error('❌ Auth update error:', authError.message);
+      return res.status(400).json({ 
+        success: false, 
+        error: `Auth error: ${authError.message}` 
+      });
+    }
+
+    // Update Database
+    // Find the user in database and update email
+    let userRef = null;
+    for (const [key, user] of Object.entries(dbUsers)) {
+      if (key === uid) {
+        userRef = key;
+        break;
+      }
+    }
+
+    if (!userRef) {
+      return res.status(404).json({ 
+        success: false, 
+        error: 'User not found in database' 
+      });
+    }
+
+    await admin.database().ref(`users/${userRef}/email`).set(trimmedEmail);
+    console.log(`✅ Database email updated for UID ${uid}`);
+
+    res.json({
+      success: true,
+      message: `Email updated successfully from ${dbUsers[userRef].email} to ${trimmedEmail}`,
+      uid: uid,
+      oldEmail: dbUsers[userRef].email,
+      newEmail: trimmedEmail
+    });
+  } catch (error) {
+    console.error('Email update error:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// ============================================
+// DATAMART ORDER STATUS SYNC - Auto-sync every 5 minutes
+// ============================================
+// This function periodically checks Datamart for order status updates
+// and syncs them to Firebase to keep order status current
+
+async function syncDatamartOrderStatus() {
+  try {
+    console.log('🔄 Starting Datamart order status sync...');
+    
+    // Get all transactions with status 'success' or 'processing' that haven't been delivered
+    const transactionsRef = admin.database().ref('transactions');
+    const snapshot = await transactionsRef.once('value');
+    const allTransactions = snapshot.val() || {};
+    
+    let syncedCount = 0;
+    let errorCount = 0;
+    let skippedCount = 0;
+    
+    for (const [transactionId, transaction] of Object.entries(allTransactions)) {
+      try {
+        // Only sync orders that:
+        // 1. Have a Datamart transaction ID
+        // 2. Status is NOT 'delivered' or 'failed' (already final)
+        // 3. Status is NOT 'refunded'
+        if (!transaction.datamartTransactionId || 
+            ['delivered', 'failed', 'refunded', 'cancelled'].includes(transaction.status?.toLowerCase())) {
+          continue;
+        }
+        
+        // Query Datamart API for this transaction's status
+        // Note: Datamart might not have a direct query endpoint, so we'll use the purchase reference
+        // For now, we'll store the status locally until Datamart provides a status endpoint
+        
+        console.log(`📋 Checking order status for: ${transaction.datamartTransactionId}`);
+        
+        // TODO: Once Datamart provides a status query endpoint, uncomment and use this:
+        /*
+        const datamartStatusResponse = await axios.get(
+          'https://api.datamartgh.shop/api/developer/transaction/status',
+          {
+            headers: {
+              'X-API-Key': process.env.DATAMART_API_KEY,
+            },
+            params: {
+              transactionId: transaction.datamartTransactionId
+            },
+            timeout: 10000
+          }
+        );
+        
+        const statusData = datamartStatusResponse.data;
+        if (statusData && statusData.data) {
+          const currentStatus = statusData.data.status;
+          
+          // Map Datamart status to DataSell status
+          const mappedStatus = mapDatamartStatusToDataSell(currentStatus);
+          
+          if (mappedStatus && mappedStatus !== transaction.status) {
+            await admin.database().ref(`transactions/${transactionId}`).update({
+              status: mappedStatus,
+              datamartStatus: currentStatus,
+              lastSyncedAt: new Date().toISOString()
+            });
+            
+            syncedCount++;
+            console.log(`✅ Updated status for ${transactionId}: ${transaction.status} → ${mappedStatus}`);
+            
+            // Notify user of status change
+            try {
+              const userRef = admin.database().ref(`users/${transaction.userId}`);
+              const userSnap = await userRef.once('value');
+              const userData = userSnap.val();
+              
+              const statusMessage = getStatusMessage(mappedStatus);
+              await sendSmsToUser(transaction.userId, transaction.phoneNumber, statusMessage);
+            } catch (smsErr) {
+              console.error(`❌ Failed to notify user ${transaction.userId}:`, smsErr);
+            }
+          }
+        }
+        */
+        
+      } catch (error) {
+        errorCount++;
+        console.error(`❌ Error syncing transaction ${transactionId}:`, error.message);
+      }
+    }
+    
+    console.log(`✅ Datamart sync completed - Updated: ${syncedCount}, Errors: ${errorCount}`);
+  } catch (error) {
+    console.error('❌ Datamart order status sync error:', error);
+  }
+}
+
+// Helper function to map Datamart status to DataSell status
+function mapDatamartStatusToDataSell(datamartStatus) {
+  const statusMap = {
+    'pending': 'processing',
+    'processing': 'processing',
+    'delivered': 'delivered',
+    'failed': 'failed',
+    'cancelled': 'cancelled',
+    'success': 'delivered'
+  };
+  
+  return statusMap[datamartStatus?.toLowerCase()] || datamartStatus;
+}
+
+// Helper function to get user-friendly status message
+function getStatusMessage(status) {
+  const messages = {
+    'processing': 'Your data order is being processed. You will receive your data shortly.',
+    'delivered': '✅ Your data has been delivered successfully!',
+    'failed': '❌ Unfortunately, your order failed. Please contact support.',
+    'cancelled': 'Your order has been cancelled.',
+    'refunded': 'Your order has been refunded to your wallet.'
+  };
+  
+  return messages[status?.toLowerCase()] || `Your order status: ${status}`;
+}
+
+// Start periodic sync (every 5 minutes) - DISABLED for now
+console.log('⏰ Datamart order status sync - TEMPORARILY DISABLED during deployment');
+/*
+setInterval(() => {
+  syncDatamartOrderStatus().catch(err => console.error('Sync error:', err));
+}, 5 * 60 * 1000);
+*/
+
+// DISABLED: Run sync after 60 seconds (give server time to start and respond to health checks)
+// setTimeout(() => {
+//   console.log('🔄 Starting initial Datamart sync...');
+//   syncDatamartOrderStatus().catch(err => console.error('Initial sync error:', err));
+// }, 60000);
+
+// Keep the process alive indefinitely (prevent Node.js from exiting)
+setInterval(() => {
+  // Empty interval just to keep the event loop alive
+}, 1000000);
+
+// Global error handlers
+process.on('uncaughtException', (err) => {
+  console.error('❌ UNCAUGHT EXCEPTION:', err);
+  // Don't exit - keep server running
+});
+
+process.on('unhandledRejection', (reason, promise) => {
+  console.error('❌ UNHANDLED REJECTION at promise:', promise, 'reason:', reason);
+  // Don't exit - keep server running
+});
+
+// Endpoint to manually trigger sync (for testing/admin)
+app.post('/api/admin/sync-datamart-orders', requireAdmin, async (req, res) => {
+  try {
+    console.log('🔄 Manual Datamart order sync triggered by admin');
+    await syncDatamartOrderStatus();
+    res.json({ 
+      success: true, 
+      message: 'Datamart order sync completed' 
+    });
+  } catch (error) {
+    console.error('Error during manual sync:', error);
+    res.status(500).json({ 
+      success: false, 
+      error: 'Sync failed: ' + error.message 
+    });
+  }
+});
+
+// Endpoint to check order status manually
+app.get('/api/order-status/:transactionId', requireAuth, async (req, res) => {
+  try {
+    const { transactionId } = req.params;
+    const userId = req.session.user.uid;
+    
+    const transactionRef = admin.database().ref(`transactions/${transactionId}`);
+    const snapshot = await transactionRef.once('value');
+    const transaction = snapshot.val();
+    
+    if (!transaction) {
+      return res.status(404).json({ 
+        success: false, 
+        error: 'Order not found' 
+      });
+    }
+    
+    // Verify user owns this transaction
+    if (transaction.userId !== userId) {
+      return res.status(403).json({ 
+        success: false, 
+        error: 'Unauthorized' 
+      });
+    }
+    
+    res.json({ 
+      success: true, 
+      transaction: {
+        id: transactionId,
+        status: transaction.status,
+        reference: transaction.reference,
+        network: transaction.network,
+        packageName: transaction.packageName,
+        amount: transaction.amount,
+        timestamp: transaction.timestamp,
+        phoneNumber: transaction.phoneNumber,
+        datamartTransactionId: transaction.datamartTransactionId
+      }
+    });
+  } catch (error) {
+    console.error('Error fetching order status:', error);
+    res.status(500).json({ 
+      success: false, 
+      error: 'Failed to fetch order status' 
+    });
+  }
+});
+
+// Health check endpoint for Render deployment
+app.get('/health', (req, res) => {
+  res.status(200).json({ status: 'ok', timestamp: new Date().toISOString() });
+});
+
+// Basic root endpoint
+app.get('/', (req, res) => {
+  res.send('DataSell Server is running');
+});
+
+// Start the server
+console.log(`⏳ Attempting to start server on port ${PORT}...`);
+const server = app.listen(PORT, '0.0.0.0', () => {
+  console.log(`
+🚀 DataSell Server is running!
+📍 Port: ${PORT}
+🌐 Environment: ${process.env.NODE_ENV || 'development'}
+⏰ Started at: ${new Date().toISOString()}
+  `);
+  
+  // Initialize package cache after server is running
+  if (!cacheInitialized) {
+    cacheInitialized = true;
+    initializePackageCache();
+  }
+  
+  // Confirm server is still running after a brief delay
+  setTimeout(() => {
+    console.log('✅ Server confirmed running and stable after 2 seconds');
+  }, 2000);
+});
+
+server.on('error', (err) => {
+  console.error('❌ Server error:', err);
+  // Don't exit - log the error and keep running
+  if (err.code === 'EADDRINUSE') {
+    console.error(`❌ Port ${PORT} is already in use. Please kill the process using that port or change PORT.`);
+  }
+});
+
+// Log when server closes
+server.on('close', () => {
+  console.log('⚠️  Server closed');
+});
+
+// Global error handlers
+process.on('uncaughtException', (err) => {
+  console.error('❌ UNCAUGHT EXCEPTION:', err);
+  // Log but don't exit - server should continue running
+});
+
+process.on('unhandledRejection', (reason, promise) => {
+  console.error('❌ UNHANDLED REJECTION at:', promise, 'reason:', reason);
+  // Log but don't exit - server should continue running
+});
+
+console.log('✅ All error handlers registered. Server is ready.');
