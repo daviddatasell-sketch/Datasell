@@ -58,8 +58,8 @@ app.set('trust proxy', 1);
 // Email transporter configuration for password reset
 const emailTransporter = nodemailer.createTransport({
   host: 'smtp.gmail.com',
-  port: 587,
-  secure: false, // Use TLS, not SSL
+  port: 465,
+  secure: true, // Use SSL (port 465)
   auth: {
     user: process.env.EMAIL_USER,
     pass: process.env.EMAIL_PASSWORD
