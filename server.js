@@ -1118,12 +1118,8 @@ app.post('/api/login', async (req, res) => {
   }
 });
 
-// Test Email Configuration endpoint (development only)
+// Test Email Configuration endpoint (for debugging email issues in production)
 app.post('/api/test-email', async (req, res) => {
-  if (process.env.NODE_ENV !== 'development') {
-    return res.status(403).json({ success: false, error: 'This endpoint is only available in development' });
-  }
-  
   try {
     const { testEmail } = req.body;
     
@@ -1138,8 +1134,22 @@ app.post('/api/test-email', async (req, res) => {
     const testMailOptions = {
       from: `${process.env.EMAIL_FROM_NAME || 'DataSell'} <${process.env.EMAIL_USER}>`,
       to: testEmail,
-      subject: 'Test Email - DataSell',
-      html: `<h2>Email Configuration Test</h2><p>If you received this email, your email configuration is working correctly!</p><p>Time sent: ${new Date().toISOString()}</p>`
+      subject: 'Test Email - DataSell Email Configuration Test',
+      html: `
+        <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+          <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 20px; border-radius: 5px 5px 0 0;">
+            <h2 style="margin: 0;">✅ Email Configuration Test</h2>
+          </div>
+          <div style="background-color: #f9f9f9; padding: 20px; border: 1px solid #ddd; border-radius: 0 0 5px 5px;">
+            <p>If you received this email, your email configuration is working correctly!</p>
+            <p><strong>Time sent:</strong> ${new Date().toISOString()}</p>
+            <p><strong>From:</strong> ${process.env.EMAIL_USER}</p>
+            <p><strong>To:</strong> ${testEmail}</p>
+            <hr style="border: none; border-top: 1px solid #ddd; margin: 20px 0;">
+            <p style="color: #999; font-size: 12px;">This is a test email from DataSell. You can now safely delete it.</p>
+          </div>
+        </div>
+      `
     };
 
     const info = await emailTransporter.sendMail(testMailOptions);
@@ -1160,7 +1170,8 @@ app.post('/api/test-email', async (req, res) => {
       error: 'Failed to send test email',
       details: {
         message: error.message,
-        code: error.code
+        code: error.code,
+        response: error.response
       }
     });
   }
