@@ -69,15 +69,24 @@ const emailTransporter = nodemailer.createTransport({
   }
 });
 
-// Verify email configuration on startup
+// Verify email configuration on startup with detailed logging
+console.log('🔧 Email Configuration Startup Check:');
+console.log('   EMAIL_USER:', process.env.EMAIL_USER || '❌ NOT SET');
+console.log('   EMAIL_PASSWORD:', process.env.EMAIL_PASSWORD ? '✅ SET (' + process.env.EMAIL_PASSWORD.length + ' chars)' : '❌ NOT SET');
+console.log('   EMAIL_FROM_NAME:', process.env.EMAIL_FROM_NAME || 'DataSell (default)');
+
 if (process.env.EMAIL_USER && process.env.EMAIL_PASSWORD) {
   emailTransporter.verify((error, success) => {
     if (error) {
-      console.log('⚠️ Email configuration issue:', error.message);
+      console.log('⚠️ Email transporter verification failed:', error.message);
+      console.log('   Error code:', error.code);
+      console.log('   Error command:', error.command);
     } else {
-      console.log('✅ Email service ready');
+      console.log('✅ Email service ready - SMTP connection verified');
     }
   });
+} else {
+  console.log('❌ Email credentials missing - password reset will NOT work');
 }
 
 // Function to send password reset email
@@ -1164,14 +1173,23 @@ app.post('/api/test-email', async (req, res) => {
       }
     });
   } catch (error) {
-    console.error('❌ Test email failed:', error);
+    console.error('❌ Test email failed:', error.message);
+    console.error('   Error code:', error.code);
+    console.error('   Error command:', error.command);
+    console.error('   Response:', error.response);
+    console.error('   Full error:', JSON.stringify(error, null, 2));
+    
     res.status(500).json({ 
       success: false, 
       error: 'Failed to send test email',
       details: {
         message: error.message,
         code: error.code,
-        response: error.response
+        command: error.command,
+        response: error.response,
+        emailUser: process.env.EMAIL_USER,
+        smtpHost: 'smtp.gmail.com',
+        smtpPort: 587
       }
     });
   }
