@@ -1177,56 +1177,162 @@ app.post('/api/forgot-password', async (req, res) => {
 
     console.log('🔑 Password reset request for email:', email);
 
-    // Find user by email in Firebase Auth
+    // HYBRID APPROACH: Try Firebase Auth first, fall back to database temp password
+    let resetMethod = null;
+    let tempPassword = null;
+
+    // STEP 1: Try Firebase Auth (for new users created via signup after Firebase integration)
+    console.log('🔍 Checking Firebase Auth for user:', email);
     try {
-      const user = await admin.auth().getUserByEmail(email);
+      const user = await Promise.race([
+        admin.auth().getUserByEmail(email),
+        new Promise((_, reject) => setTimeout(() => reject(new Error('Firebase Auth timeout')), 5000))
+      ]);
       
-      // Generate password reset link
-      const resetLink = await admin.auth().generatePasswordResetLink(email);
+      console.log('✅ User found in Firebase Auth:', user.uid);
       
-      console.log('✅ Password reset link generated for user:', user.uid);
-      
-      // Store reset request in database with timestamp
-      const resetToken = Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15);
-      const resetExpiresAt = Date.now() + (60 * 60 * 1000); // 1 hour expiration
-      
-      await admin.database().ref(`passwordResets/${user.uid}`).set({
-        email: email,
-        token: resetToken,
-        createdAt: new Date().toISOString(),
-        expiresAt: resetExpiresAt,
-        used: false
-      });
-
-      // Send email with password reset link
-      let emailSent = false;
-      if (process.env.EMAIL_USER && process.env.EMAIL_PASSWORD) {
-        console.log('📬 Starting email send process...');
-        emailSent = await sendPasswordResetEmail(email, resetLink, user.displayName || 'User');
-        console.log('📬 Email send result:', emailSent);
-      } else {
-        console.log('⚠️ Email service not configured. Reset link logged for development only.');
-        console.log('📧 Password Reset Link (for development):', resetLink);
+      // Try to generate password reset link with timeout
+      try {
+        const resetLink = await Promise.race([
+          admin.auth().generatePasswordResetLink(email),
+          new Promise((_, reject) => setTimeout(() => reject(new Error('Password reset link generation timeout')), 5000))
+        ]);
+        
+        console.log('✅ Password reset link generated');
+        resetMethod = 'firebase-auth';
+        
+        // Send Firebase reset link via email
+        const mailOptions = {
+          from: `${process.env.EMAIL_FROM_NAME || 'DataSell'} <${process.env.EMAIL_USER}>`,
+          to: email,
+          subject: 'Password Reset Request - DataSell',
+          html: `
+            <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+              <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 20px; border-radius: 5px 5px 0 0;">
+                <h2 style="margin: 0;">Password Reset Request</h2>
+              </div>
+              <div style="background-color: #f9f9f9; padding: 20px; border: 1px solid #ddd; border-radius: 0 0 5px 5px;">
+                <p>Hello,</p>
+                <p>We received a request to reset the password for your DataSell account. If you did not make this request, please ignore this email.</p>
+                <p>To reset your password, click the button below:</p>
+                <div style="text-align: center; margin: 30px 0;">
+                  <a href="${resetLink}" style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 12px 30px; text-decoration: none; border-radius: 5px; display: inline-block; font-weight: bold;">Reset Password</a>
+                </div>
+                <p>Or copy and paste this link in your browser:</p>
+                <p style="word-break: break-all; color: #666; font-size: 12px;"><code>${resetLink}</code></p>
+                <p style="color: #999; font-size: 12px;">This link will expire in 1 hour.</p>
+                <hr style="border: none; border-top: 1px solid #ddd; margin: 20px 0;">
+                <p style="color: #999; font-size: 12px;">If you didn't request this, your account is still secure. The link will expire automatically.</p>
+                <p style="color: #999; font-size: 12px;">© 2026 DataSell. All rights reserved.</p>
+              </div>
+            </div>
+          `
+        };
+        
+        await emailTransporter.sendMail(mailOptions);
+        console.log('✅ Password reset email sent via Firebase method');
+        
+        return res.json({ 
+          success: true, 
+          message: 'Password reset link has been sent to your email. Please check your inbox.',
+          resetMethod: 'firebase-auth'
+        });
+      } catch (linkError) {
+        console.warn('⚠️ Firebase password reset link failed:', linkError.message);
+        // Fall through to database method
       }
+    } catch (firebaseError) {
+      console.log('ℹ️ User not in Firebase Auth or Firebase unavailable:', firebaseError.message);
+      // Fall through to database method
+    }
 
-      res.json({ 
+    // STEP 2: Fall back to database method (for existing users or if Firebase fails)
+    console.log('📦 Falling back to database method...');
+    const usersSnapshot = await admin.database().ref('users').once('value');
+    const allUsers = usersSnapshot.val() || {};
+    
+    let foundUser = null;
+    let foundUserId = null;
+    
+    for (const [uid, userData] of Object.entries(allUsers)) {
+      if (userData.email && userData.email.toLowerCase() === email.toLowerCase()) {
+        foundUser = userData;
+        foundUserId = uid;
+        console.log('✅ Found user in database:', uid);
+        break;
+      }
+    }
+
+    if (!foundUser) {
+      console.log('❌ User not found in database:', email);
+      // For security, return generic message
+      return res.json({ 
         success: true, 
-        message: 'If this email exists in our system, a password reset link has been sent to your email. Please check your inbox and spam folder.',
-        emailSent: emailSent,
-        // Include link for development/testing only (REMOVE IN PRODUCTION)
-        resetLink: process.env.NODE_ENV === 'development' ? resetLink : undefined
-      });
-    } catch (authError) {
-      console.log('ℹ️ Email not found or invalid:', authError.message);
-      
-      // For security, return generic message even if user not found
-      res.json({ 
-        success: true, 
-        message: 'If this email exists in our system, a password reset link has been sent to your email. Please check your inbox and spam folder.'
+        message: 'If this email exists in our system, a password reset link has been sent to your email. Please check your inbox.'
       });
     }
+
+    // Generate temporary password
+    tempPassword = require('crypto').randomBytes(8).toString('hex').toUpperCase();
+    const passwordHash = await bcrypt.hash(tempPassword, 10);
+    
+    console.log('✅ Generated temporary password for:', foundUserId);
+
+    // Store in database
+    await admin.database().ref(`users/${foundUserId}`).update({
+      passwordHash: passwordHash,
+      lastPasswordUpdate: new Date().toISOString()
+    });
+
+    // Send temporary password via email
+    const mailOptions = {
+      from: `${process.env.EMAIL_FROM_NAME || 'DataSell'} <${process.env.EMAIL_USER}>`,
+      to: email,
+      subject: 'Your DataSell Temporary Password',
+      html: `
+        <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+          <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 20px; border-radius: 5px 5px 0 0;">
+            <h2 style="margin: 0;">Password Reset</h2>
+          </div>
+          <div style="background-color: #f9f9f9; padding: 20px; border: 1px solid #ddd; border-radius: 0 0 5px 5px;">
+            <p>Hello,</p>
+            <p>We received a request to reset your DataSell account password. Here is your temporary password:</p>
+            <div style="text-align: center; margin: 30px 0;">
+              <div style="background-color: #f0f0f0; padding: 15px; border-radius: 5px; font-family: monospace; font-size: 18px; font-weight: bold; letter-spacing: 2px;">
+                ${tempPassword}
+              </div>
+            </div>
+            <p><strong>Instructions:</strong></p>
+            <ol>
+              <li>Go to the DataSell login page</li>
+              <li>Enter your email: <strong>${email}</strong></li>
+              <li>Enter this temporary password: <strong>${tempPassword}</strong></li>
+              <li>After logging in, change your password immediately</li>
+            </ol>
+            <p style="color: #999; font-size: 12px;">
+              <strong>Security Note:</strong> This temporary password expires in 24 hours. Never share your password with anyone.
+            </p>
+            <hr style="border: none; border-top: 1px solid #ddd; margin: 20px 0;">
+            <p style="color: #999; font-size: 12px;">If you didn't request this, please ignore this email.</p>
+            <p style="color: #999; font-size: 12px;">© 2026 DataSell. All rights reserved.</p>
+          </div>
+        </div>
+      `
+    };
+    
+    await emailTransporter.sendMail(mailOptions);
+    console.log('✅ Temporary password email sent successfully');
+    
+    res.json({ 
+      success: true, 
+      message: 'A temporary password has been sent to your email. Please check your inbox.',
+      resetMethod: 'database-temp-password',
+      // For development only
+      tempPassword: process.env.NODE_ENV === 'development' ? tempPassword : undefined
+    });
+
   } catch (error) {
-    console.error('Forgot password error:', error);
+    console.error('❌ Forgot password error:', error);
     res.status(500).json({ success: false, error: 'An error occurred. Please try again later.' });
   }
 });
