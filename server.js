@@ -1229,15 +1229,22 @@ app.post('/api/forgot-password', async (req, res) => {
           `
         };
         
-        try {
-          console.log('📧 Attempting to send password reset email to:', email);
-          const info = await emailTransporter.sendMail(mailOptions);
-          console.log('✅ Password reset email sent via Firebase method:', info.messageId);
-        } catch (emailSendError) {
-          console.error('❌ Email send failed:', emailSendError.message);
-          console.error('Email error code:', emailSendError.code);
-          console.error('Email error response:', emailSendError.response);
-        }
+        // Send email with timeout (non-blocking)
+        (async () => {
+          try {
+            console.log('📧 Attempting to send password reset email to:', email);
+            const emailPromise = emailTransporter.sendMail(mailOptions);
+            const info = await Promise.race([
+              emailPromise,
+              new Promise((_, reject) => setTimeout(() => reject(new Error('Email send timeout')), 10000))
+            ]);
+            console.log('✅ Password reset email sent via Firebase method:', info.messageId);
+          } catch (emailSendError) {
+            console.error('❌ Email send failed:', emailSendError.message);
+            console.error('Email error code:', emailSendError.code);
+            console.error('Email error response:', emailSendError.response);
+          }
+        })();
         
         return res.json({ 
           success: true, 
@@ -1327,15 +1334,22 @@ app.post('/api/forgot-password', async (req, res) => {
       `
     };
     
-    try {
-      console.log('📧 Attempting to send temporary password email to:', email);
-      const info = await emailTransporter.sendMail(mailOptions);
-      console.log('✅ Temporary password email sent successfully:', info.messageId);
-    } catch (emailSendError) {
-      console.error('❌ Temporary password email send failed:', emailSendError.message);
-      console.error('Email error code:', emailSendError.code);
-      console.error('Email error response:', emailSendError.response);
-    }
+    // Send email with timeout (non-blocking)
+    (async () => {
+      try {
+        console.log('📧 Attempting to send temporary password email to:', email);
+        const emailPromise = emailTransporter.sendMail(mailOptions);
+        const info = await Promise.race([
+          emailPromise,
+          new Promise((_, reject) => setTimeout(() => reject(new Error('Email send timeout')), 10000))
+        ]);
+        console.log('✅ Temporary password email sent successfully:', info.messageId);
+      } catch (emailSendError) {
+        console.error('❌ Temporary password email send failed:', emailSendError.message);
+        console.error('Email error code:', emailSendError.code);
+        console.error('Email error response:', emailSendError.response);
+      }
+    })();
     
     res.json({ 
       success: true, 
