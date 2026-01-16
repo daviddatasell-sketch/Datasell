@@ -892,20 +892,13 @@ app.post('/api/signup', async (req, res) => {
 // Enhanced User Login
 app.post('/api/login', async (req, res) => {
   try {
-    let { email, password, remember, isAdminLogin } = req.body;
-    // Coerce remember to boolean for safety (clients may send 'true'/'false' strings)
-    remember = (remember === true || remember === 'true');
+    let { email, password, rememberMe, isAdminLogin } = req.body;
+    // Coerce rememberMe to boolean for safety (clients may send 'true'/'false' strings)
+    rememberMe = (rememberMe === true || rememberMe === 'true');
     isAdminLogin = (isAdminLogin === true || isAdminLogin === 'true');
-    console.log('🔐 Login attempt received', { email, remember, isAdminLogin });
+    console.log('🔐 Login attempt received', { email, rememberMe, isAdminLogin });
 
-    // Enforce 'remember me' requirement: do not allow login unless user checked it
-    if (!remember) {
-      console.log('❌ Remember me not checked');
-      return res.status(400).json({
-        success: false,
-        error: 'You must check "Remember me" to sign in.'
-      });
-    }
+    // Remember me is now OPTIONAL - users can log in without checking it
     
     if (!email || !password) {
       console.log('❌ Missing email or password');
@@ -975,7 +968,7 @@ app.post('/api/login', async (req, res) => {
 
       // Respect 'remember me' for admin sessions if provided
       try {
-        const rememberMs = remember ? 30 * 24 * 60 * 60 * 1000 : 24 * 60 * 60 * 1000; // 30 days || 24 hours
+        const rememberMs = rememberMe ? 30 * 24 * 60 * 60 * 1000 : 24 * 60 * 60 * 1000; // 30 days || 24 hours
         req.session.cookie.maxAge = rememberMs;
       } catch (e) {
         // Ignore if session cookie cannot be modified
@@ -1067,7 +1060,7 @@ app.post('/api/login', async (req, res) => {
 
     // Respect 'remember me' for regular user sessions
     try {
-      const rememberMs = remember ? 30 * 24 * 60 * 60 * 1000 : 24 * 60 * 60 * 1000; // 30 days || 24 hours
+      const rememberMs = rememberMe ? 30 * 24 * 60 * 60 * 1000 : 24 * 60 * 60 * 1000; // 30 days || 24 hours
       req.session.cookie.maxAge = rememberMs;
     } catch (e) {
       // Ignore if session cookie cannot be modified
@@ -2917,68 +2910,133 @@ app.post('/api/verify-and-credit-payment', requireAuth, async (req, res) => {
     const { reference } = req.body;
     const userId = req.session.user.uid;
     const userEmail = req.session.user.email;
+    const userRef = admin.database().ref('users/' + userId);
 
     if (!reference) {
       return res.status(400).json({ success: false, error: 'Reference required' });
     }
 
-    console.log(`🔍 [MANUAL-VERIFY] User ${userId} attempting manual payment verification for ref: ${reference}`);
-
-    // Verify payment with Paystack
-    const paystackResponse = await axios.get(
-      `${process.env.PAYSTACK_BASE_URL}/transaction/verify/${reference}`,
-      {
-        headers: {
-          'Authorization': `Bearer ${process.env.PAYSTACK_SECRET_KEY}`
-        },
-        timeout: 15000
-      }
-    );
-
-    const paystackData = paystackResponse.data;
-
-    if (!paystackData.status || paystackData.data?.status !== 'success') {
-      console.warn(`⚠️ [MANUAL-VERIFY] Payment not confirmed by Paystack for ref: ${reference}`);
-      return res.status(400).json({ 
-        success: false, 
-        error: 'Payment not confirmed by Paystack',
-        paystackStatus: paystackData.data?.status
-      });
+    // Sanitize reference - only allow alphanumeric and common characters
+    const cleanReference = reference.trim().toLowerCase();
+    if (!/^[a-z0-9]+$/.test(cleanReference)) {
+      console.warn(`⚠️ [MANUAL-VERIFY] Invalid reference format attempt by ${userId}: ${reference}`);
+      return res.status(400).json({ success: false, error: 'Invalid reference code format' });
     }
 
-    const { amount, metadata } = paystackData.data;
-    const originalAmount = metadata?.originalAmount || (amount / 100);
-    const amountInCedis = parseFloat(originalAmount);
-    const paystackUserId = metadata?.userId;
+    console.log(`🔍 [MANUAL-VERIFY] User ${userId} attempting manual payment verification for ref: ${cleanReference}`);
 
-    // Verify the reference belongs to the logged-in user
-    if (paystackUserId !== userId) {
-      console.error(`❌ [MANUAL-VERIFY] User ${userId} attempted to claim payment for different user ${paystackUserId}`);
-      return res.status(403).json({ 
-        success: false, 
-        error: 'This payment does not belong to your account'
-      });
-    }
-
-    // Check if already credited
+    // STEP 1: Check if already credited in our database (FAST PATH - < 0.01s)
+    console.log(`⚡ [MANUAL-VERIFY] Checking local payments database...`);
     const paymentsRef = admin.database().ref('payments');
     const existingPaymentSnapshot = await paymentsRef
       .orderByChild('reference')
-      .equalTo(reference)
+      .equalTo(cleanReference)
       .once('value');
 
     if (existingPaymentSnapshot.exists()) {
-      console.log(`ℹ️ [MANUAL-VERIFY] Payment already credited for ref: ${reference}`);
+      console.log(`✅ [MANUAL-VERIFY] Transaction already credited (found in payments DB) for ref: ${cleanReference}`);
+      // Get the payment record
+      const payments = existingPaymentSnapshot.val();
+      const payment = Object.values(payments)[0];
+      
+      // CRITICAL: Check if the payment belongs to the current user
+      if (payment.userId !== userId) {
+        console.error(`❌ [MANUAL-VERIFY] Security: User ${userId} attempted to claim payment for different user ${payment.userId}`);
+        return res.status(403).json({ 
+          success: false, 
+          error: '❌ Incorrect reference code. This payment belongs to a different account.'
+        });
+      }
+      
+      // Get current balance for the response
+      const currentUserSnapshot = await userRef.once('value');
+      const currentUserData = currentUserSnapshot.val();
+      const currentBalance = currentUserData.walletBalance || 0;
+      
       return res.status(200).json({ 
         success: true, 
-        message: 'Payment already credited to your wallet',
-        amount: amountInCedis,
+        message: '✅ This payment was already verified! ₵' + payment.amount + ' added to your wallet',
+        amount: payment.amount,
+        newBalance: currentBalance,
         alreadyCredited: true
       });
     }
 
+    // STEP 2: Verify payment with Paystack - THIS IS THE PRIMARY VALIDATION
+    console.log(`🔐 [MANUAL-VERIFY] Verifying with Paystack API...`);
+    let paystackResponse;
+    try {
+      paystackResponse = await axios.get(
+        `${process.env.PAYSTACK_BASE_URL}/transaction/verify/${cleanReference}`,
+        {
+          headers: {
+            'Authorization': `Bearer ${process.env.PAYSTACK_SECRET_KEY}`
+          },
+          timeout: 15000
+        }
+      );
+    } catch (paystackError) {
+      console.error(`❌ [MANUAL-VERIFY] Paystack API error:`, {
+        status: paystackError.response?.status,
+        message: paystackError.message,
+        data: paystackError.response?.data
+      });
+      
+      // Specific error messages based on Paystack response
+      if (paystackError.response?.status === 404) {
+        return res.status(400).json({ 
+          success: false, 
+          error: '❌ Incorrect reference code. Please check your Paystack receipt and try again.'
+        });
+      }
+      
+      return res.status(400).json({ 
+        success: false, 
+        error: '❌ Could not verify payment. Please check your reference code and try again.',
+        paystackStatus: paystackError.response?.status
+      });
+    }
+
+    const paystackData = paystackResponse.data;
+
+    // STRICT VALIDATION: Check if payment status is 'success'
+    if (!paystackData.status || paystackData.data?.status !== 'success') {
+      console.warn(`⚠️ [MANUAL-VERIFY] Payment not confirmed by Paystack for ref: ${cleanReference}. Status: ${paystackData.data?.status}`);
+      
+      const status = paystackData.data?.status || 'unknown';
+      if (status === 'failed') {
+        return res.status(400).json({ 
+          success: false, 
+          error: '❌ This payment failed. Please make another payment.'
+        });
+      } else if (status === 'pending') {
+        return res.status(400).json({ 
+          success: false, 
+          error: '❌ This payment is still pending. Please wait and try again shortly.'
+        });
+      } else {
+        return res.status(400).json({ 
+          success: false, 
+          error: `❌ Payment was not successful (Status: ${status}). Only verified payments can be credited.`
+        });
+      }
+    }
+
+    const { amount, metadata, customer } = paystackData.data;
+    const originalAmount = metadata?.originalAmount || (amount / 100);
+    const amountInCedis = parseFloat(originalAmount);
+    const paystackUserId = metadata?.userId;
+
+    // CRITICAL VALIDATION: Verify the reference belongs to the logged-in user
+    if (paystackUserId && paystackUserId !== userId) {
+      console.error(`❌ [MANUAL-VERIFY] Security: User ${userId} attempted to claim payment for different user ${paystackUserId}`);
+      return res.status(403).json({ 
+        success: false, 
+        error: '❌ Incorrect reference code. This payment belongs to a different account.'
+      });
+    }
+
     // Get user data
-    const userRef = admin.database().ref('users/' + userId);
     const userSnapshot = await userRef.once('value');
     
     if (!userSnapshot.exists()) {
@@ -2991,14 +3049,14 @@ app.post('/api/verify-and-credit-payment', requireAuth, async (req, res) => {
     const newBalance = currentBalance + amountInCedis;
 
     // CREDIT THE WALLET
-    console.log(`💰 [MANUAL-VERIFY] CREDITING WALLET: ${userId} | Amount: ₵${amountInCedis}`);
+    console.log(`💰 [MANUAL-VERIFY] CREDITING WALLET: ${userId} | Amount: ₵${amountInCedis} | Reference: ${cleanReference}`);
     
     await userRef.update({
       walletBalance: newBalance,
       lastWalletUpdate: new Date().toISOString(),
       lastWalletCredit: {
         amount: amountInCedis,
-        reference: reference,
+        reference: cleanReference,
         timestamp: new Date().toISOString()
       }
     });
@@ -3010,21 +3068,21 @@ app.post('/api/verify-and-credit-payment', requireAuth, async (req, res) => {
       amount: amountInCedis,
       paystackAmount: amount / 100,
       fee: (amount / 100) - amountInCedis,
-      reference,
+      reference: cleanReference,
       status: 'success',
       source: 'manual_verification',
       paystackData: paystackData.data,
       timestamp: new Date().toISOString()
     });
 
-    console.log(`✅ [MANUAL-VERIFY] Payment verified and credited for ${userId}`);
+    console.log(`✅ [MANUAL-VERIFY] Payment verified and credited for ${userId} | Ref: ${cleanReference} | Amount: ₵${amountInCedis}`);
 
     // Send notifications async
     setImmediate(async () => {
       try {
         const username = userData.displayName || userData.username || userData.email || 'Customer';
         const phoneFallback = userData.phone || userData.phoneNumber || '';
-        const message = `Hello ${username}, your manual payment verification completed. Wallet credited with ₵${amountInCedis}!`;
+        const message = `Hello ${username}, your payment of ₵${amountInCedis} has been verified and credited to your wallet!`;
         sendSmsToUser(userId, phoneFallback, message);
       } catch (err) {
         console.error(`⚠️ [MANUAL-VERIFY] SMS error:`, err.message);
@@ -3033,21 +3091,22 @@ app.post('/api/verify-and-credit-payment', requireAuth, async (req, res) => {
 
     return res.status(200).json({
       success: true,
-      message: 'Payment verified and wallet credited successfully',
+      message: '✅ Payment verified! ₵' + amountInCedis + ' added to your wallet',
       amount: amountInCedis,
       newBalance: newBalance,
-      reference: reference
+      reference: cleanReference
     });
 
   } catch (error) {
     console.error(`❌ [MANUAL-VERIFY] Error:`, {
       message: error.message,
+      stack: error.stack,
       paystackError: error.response?.data
     });
 
     res.status(500).json({
       success: false,
-      error: error.response?.data?.message || 'Payment verification failed',
+      error: error.response?.data?.message || error.message || 'Payment verification failed. Please try again.',
       details: error.response?.data
     });
   }
