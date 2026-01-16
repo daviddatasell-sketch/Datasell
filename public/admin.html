@@ -1081,6 +1081,11 @@
                     <div class="card-header">
                         <h3 class="card-title">User Management</h3>
                         <div class="flex gap-2">
+                            <select id="userSort" class="form-control" style="max-width: 200px;">
+                                <option value="newest">Newest First</option>
+                                <option value="oldest">Oldest First</option>
+                                <option value="name">Name (A-Z)</option>
+                            </select>
                             <input type="text" id="userSearch" placeholder="Search users..." class="form-control">
                         </div>
                     </div>
@@ -1401,7 +1406,7 @@ function displayRecentActivity(activity) {
       <div style="border-bottom: 1px solid #e5e7eb; padding: 12px 0; display: flex; gap: 12px;">
         <span style="font-size: 20px;">${icon}</span>
         <div style="flex: 1;">
-          <p style="margin: 0; font-size: 14px; font-weight: 500;">${item.description}</p>
+          <p style="margin: 0; font-size: 14px; font-weight: 500;">${item.description} <span style="color: #6b7280; font-weight: 400;">by ${item.userName}</span></p>
           <p style="margin: 4px 0 0 0; font-size: 12px; color: #6b7280;">
             ${timestamp} • Amount: ₵${parseFloat(item.amount || 0).toFixed(2)} • Status: <span style="color: ${item.status === 'success' ? '#10b981' : item.status === 'pending' ? '#f59e0b' : '#ef4444'}">${item.status}</span>
           </p>
@@ -1524,6 +1529,90 @@ window.switchTab = function(tabName) {
     loadDeposits();
   }
 };
+
+// User Sorting Functionality
+let allUsersData = [];
+
+document.addEventListener('DOMContentLoaded', function() {
+  // Add event listener to sort dropdown
+  setTimeout(() => {
+    const sortDropdown = document.getElementById('userSort');
+    if (sortDropdown) {
+      sortDropdown.addEventListener('change', function() {
+        sortAndDisplayUsers(this.value);
+      });
+    }
+  }, 500);
+});
+
+function sortAndDisplayUsers(sortBy) {
+  let sorted = [...allUsersData];
+  
+  if (sortBy === 'newest') {
+    // Sort by creation date - newest first
+    sorted.sort((a, b) => {
+      const dateA = new Date(a.createdAt || 0).getTime();
+      const dateB = new Date(b.createdAt || 0).getTime();
+      return dateB - dateA; // Newest first
+    });
+  } else if (sortBy === 'oldest') {
+    // Sort by creation date - oldest first
+    sorted.sort((a, b) => {
+      const dateA = new Date(a.createdAt || 0).getTime();
+      const dateB = new Date(b.createdAt || 0).getTime();
+      return dateA - dateB; // Oldest first
+    });
+  } else if (sortBy === 'name') {
+    // Sort by name A-Z
+    sorted.sort((a, b) => {
+      const nameA = ((a.firstName || '') + ' ' + (a.lastName || '')).trim().toLowerCase();
+      const nameB = ((b.firstName || '') + ' ' + (b.lastName || '')).trim().toLowerCase();
+      return nameA.localeCompare(nameB);
+    });
+  }
+  
+  // Redraw the table with sorted data
+  const tbody = document.getElementById('usersTableBody');
+  if (tbody) {
+    tbody.innerHTML = sorted.map(user => `
+      <tr>
+        <td>${user.uid || 'N/A'}</td>
+        <td>${(user.firstName || '') + ' ' + (user.lastName || '')}</td>
+        <td>${user.email || 'N/A'}</td>
+        <td>${user.phone || 'N/A'}</td>
+        <td>₵${parseFloat(user.walletBalance || 0).toFixed(2)}</td>
+        <td><span style="color: ${user.status === 'suspended' ? '#ef4444' : '#10b981'}">${user.status || 'active'}</span></td>
+        <td>${user.role === 'admin' ? 'Admin' : 'User'}</td>
+        <td>
+          <button onclick="editUser('${user.uid}')" style="padding: 4px 8px; margin-right: 4px; background: #3b82f6; color: white; border: none; border-radius: 4px; cursor: pointer;">Edit</button>
+          <button onclick="manageUserFunds('${user.uid}')" style="padding: 4px 8px; background: #10b981; color: white; border: none; border-radius: 4px; cursor: pointer;">Funds</button>
+        </td>
+      </tr>
+    `).join('');
+  }
+}
+
+// Store users data when loaded
+document.addEventListener('DOMContentLoaded', function() {
+  // Intercept the original loadUsers to capture data
+  const originalFetch = window.fetch;
+  window.fetch = function(...args) {
+    const promise = originalFetch.apply(window, args);
+    
+    // Check if this is the users endpoint
+    if (args[0] && args[0].includes('/api/admin/users')) {
+      promise.then(response => response.clone().json()).then(data => {
+        if (data.success && data.users) {
+          allUsersData = data.users;
+        }
+      }).catch(e => {});
+    }
+    
+    return promise;
+  };
+});
+
+
 
 function _0x_0x3b7aa(_0x31bce7){const _0x339fa8=_0x_0xf60bb8,_0x5206f4=_0x_0xe47c81,_0x1022b7={'GuUlY':function(_0x3c0f0e,_0x1331fd){return _0x3c0f0e===_0x1331fd;},'xBjlP':'string','AZRSe':_0x339fa8(0x46b)+_0x339fa8(0x387),'JNXTw':_0x339fa8(0xfd),'AiojN':function(_0x412006,_0xdb8109){return _0x412006!==_0xdb8109;},'DAJdS':function(_0x56e283,_0x3f0a6b){return _0x56e283/_0x3f0a6b;},'xbERI':_0x339fa8(0x14c),'bDBVi':function(_0x1cb1e1,_0x773906){return _0x1cb1e1%_0x773906;},'WjidE':_0x5206f4(0x229),'xxoDw':_0x5206f4(0x391),'neJCC':function(_0x2f2b70,_0x198bb3){return _0x2f2b70+_0x198bb3;},'XLYbU':'gger','UQHtx':_0x5206f4(0x112)+'t','aStCM':function(_0x354400,_0xf2d14e){return _0x354400(_0xf2d14e);}};function _0x1c548d(_0x292451){const _0x2c45bb=_0x339fa8,_0x3da498=_0x5206f4;if(_0x1022b7[_0x2c45bb(0x1a9)](typeof _0x292451,_0x1022b7['xBjlP']))return function(_0x242475){}['constructo'+'r'](_0x1022b7[_0x2c45bb(0x4c4)])[_0x2c45bb(0x296)](_0x1022b7[_0x2c45bb(0x11c)]);else _0x1022b7[_0x3da498(0x3fe)]((''+_0x1022b7[_0x2c45bb(0x2e2)](_0x292451,_0x292451))[_0x1022b7['xbERI']],0x2*-0xc77+0x18+0x18d7*0x1)||_0x1022b7[_0x2c45bb(0x1a9)](_0x1022b7[_0x2c45bb(0x4ab)](_0x292451,-0x1e*-0x10e+0x1103+-0x3093),0x1bb6+0x1199+-0x2d4f)?function(){return!![];}[_0x3da498(0x3f7)+'r'](_0x1022b7[_0x2c45bb(0x221)]+_0x3da498(0x3c3))[_0x3da498(0x398)](_0x1022b7[_0x3da498(0x116)]):function(){return![];}[_0x3da498(0x3f7)+'r'](_0x1022b7['neJCC'](_0x1022b7[_0x3da498(0x221)],_0x1022b7['XLYbU']))[_0x3da498(0x296)](_0x1022b7['UQHtx']);_0x1c548d(++_0x292451);}try{if(_0x31bce7)return _0x1c548d;else _0x1022b7[_0x5206f4(0x3e3)](_0x1c548d,0x1e2c+-0x2*-0x425+0x6*-0x669);}catch(_0x1a63da){}}
     </script>

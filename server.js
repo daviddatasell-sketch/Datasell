@@ -1746,13 +1746,21 @@ app.get('/api/admin/dashboard/stats', requireAdmin, async (req, res) => {
 // Recent Activity endpoint for dashboard
 app.get('/api/admin/recent-activity', requireAdmin, async (req, res) => {
   try {
-    const [transactionsSnapshot, webhookLogsSnapshot] = await Promise.all([
+    const [transactionsSnapshot, webhookLogsSnapshot, usersSnapshot] = await Promise.all([
       admin.database().ref('transactions').limitToLast(10).once('value'),
-      admin.database().ref('webhook_logs').limitToLast(5).once('value')
+      admin.database().ref('webhook_logs').limitToLast(5).once('value'),
+      admin.database().ref('users').once('value')
     ]);
 
     const transactions = transactionsSnapshot.val() || {};
     const webhookLogs = webhookLogsSnapshot.val() || {};
+    const users = usersSnapshot.val() || {};
+
+    // Helper function to get username
+    const getUserName = (userId) => {
+      const user = users[userId];
+      return user ? (user.firstName && user.lastName ? `${user.firstName} ${user.lastName}` : user.email || 'Unknown') : 'Unknown User';
+    };
 
     // Get recent transactions
     const recentTransactions = Object.entries(transactions)
@@ -1766,6 +1774,7 @@ app.get('/api/admin/recent-activity', requireAdmin, async (req, res) => {
         status: transaction.status,
         timestamp: transaction.timestamp,
         userId: transaction.userId,
+        userName: getUserName(transaction.userId),
         reference: transaction.reference
       }));
 
@@ -1780,7 +1789,8 @@ app.get('/api/admin/recent-activity', requireAdmin, async (req, res) => {
         amount: log.amount,
         status: log.status,
         timestamp: log.timestamp,
-        userId: log.userId
+        userId: log.userId,
+        userName: getUserName(log.userId)
       }));
 
     // Combine and sort
