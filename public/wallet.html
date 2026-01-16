@@ -793,13 +793,13 @@ body {
                     </p>
                     <div class="mb-3">
                         <label for="verifyReference" class="form-label" style="font-weight: 600; color: #495057; font-size: 0.95rem;">Paystack Reference</label>
-                        <input type="text" class="form-control" id="verifyReference" placeholder="e.g., 1234567890" style="border-color: #e0e0e0; font-size: 1rem;">
+                        <input type="text" class="form-control" id="verifyReference" placeholder="e.g, ts0u73nlmi" style="border-color: #e0e0e0; font-size: 1rem;">
                         <small class="text-muted d-block mt-2" style="font-size: 0.85rem;">You'll find this in the Paystack receipt or confirmation email</small>
                     </div>
                 </div>
                 <div class="modal-footer" style="border-top: 1px solid #e9ecef; padding: 1.5rem 2rem; gap: 0.75rem;">
                     <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal" style="border-color: #e9ecef; color: #6c757d; padding: 0.6rem 1.5rem; border-radius: 8px; font-weight: 600;">Cancel</button>
-                    <button type="button" class="btn" id="verifyPaymentBtn" onclick="submitManualVerification()" style="padding: 0.6rem 1.5rem; min-height: auto; border-radius: 8px; background-color: #6c63ff; color: white; border: none; font-weight: 600;">
+                    <button type="button" class="btn" id="verifyPaymentBtn" onclick="submitManualVerification()" style="padding: 0.6rem 1.5rem; min-height: auto; border-radius: 8px; background-color: #228B22; color: white; border: none; font-weight: 600;">
                         <i class="fas fa-check me-2"></i>Verify & Credit
                     </button>
                 </div>
@@ -1190,7 +1190,7 @@ async function initializeApp() {
             btn.innerHTML = '<i class="fas fa-spinner fa-spin me-2"></i>Verifying...';
 
             console.log('🔐 Manually verifying payment with reference:', reference);
-            notyf.info('Verifying payment with Paystack...');
+            notyf.success('Verifying payment with Paystack...');
 
             const response = await fetch('/api/verify-and-credit-payment', {
                 method: 'POST',
@@ -1208,18 +1208,25 @@ async function initializeApp() {
                 const modal = bootstrap.Modal.getInstance(document.getElementById('verifyPaymentModal'));
                 modal.hide();
 
-                notyf.success(`✅ Payment verified! ₵${result.amount} added to your wallet!`);
+                // Show different message based on whether payment was already credited or newly credited
+                if (result.alreadyCredited) {
+                    notyf.success(`✅ Payment already verified! ₵${result.amount} added to your wallet`);
+                } else {
+                    notyf.success(`✅ Payment verified! ₵${result.amount} added to your wallet!`);
+                }
                 
-                // Update balance
-                userBalance = result.newBalance;
-                document.getElementById('balanceText').textContent = `₵${userBalance.toFixed(2)}`;
+                // Update balance - with safety check
+                if (result.newBalance !== undefined && result.newBalance !== null) {
+                    userBalance = result.newBalance;
+                    document.getElementById('balanceText').textContent = `₵${userBalance.toFixed(2)}`;
+                }
                 
                 // Reload transactions
                 transactionPage = 1;
                 await loadTransactions();
             } else {
                 if (result.alreadyCredited) {
-                    notyf.info('This payment was already credited to your wallet');
+                    notyf.success('✅ This payment was already credited to your wallet');
                     const modal = bootstrap.Modal.getInstance(document.getElementById('verifyPaymentModal'));
                     modal.hide();
                 } else {
