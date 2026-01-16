@@ -1750,6 +1750,92 @@ app.get('/api/admin/dashboard/stats', requireAdmin, async (req, res) => {
   }
 });
 
+// Recent Activity endpoint for dashboard
+app.get('/api/admin/recent-activity', requireAdmin, async (req, res) => {
+  try {
+    const [transactionsSnapshot, webhookLogsSnapshot] = await Promise.all([
+      admin.database().ref('transactions').limitToLast(10).once('value'),
+      admin.database().ref('webhook_logs').limitToLast(5).once('value')
+    ]);
+
+    const transactions = transactionsSnapshot.val() || {};
+    const webhookLogs = webhookLogsSnapshot.val() || {};
+
+    // Get recent transactions
+    const recentTransactions = Object.entries(transactions)
+      .sort(([,a], [,b]) => new Date(b.timestamp) - new Date(a.timestamp))
+      .slice(0, 5)
+      .map(([id, transaction]) => ({
+        id,
+        type: 'transaction',
+        description: `${transaction.packageName || 'Data Package'} - ${transaction.network}`,
+        amount: transaction.amount,
+        status: transaction.status,
+        timestamp: transaction.timestamp,
+        userId: transaction.userId,
+        reference: transaction.reference
+      }));
+
+    // Get recent webhook events
+    const recentWebhooks = Object.entries(webhookLogs)
+      .sort(([,a], [,b]) => new Date(b.timestamp) - new Date(a.timestamp))
+      .slice(0, 3)
+      .map(([id, log]) => ({
+        id,
+        type: 'payment',
+        description: `Payment: ${log.reference} - ${log.status}`,
+        amount: log.amount,
+        status: log.status,
+        timestamp: log.timestamp,
+        userId: log.userId
+      }));
+
+    // Combine and sort
+    const recentActivity = [...recentTransactions, ...recentWebhooks]
+      .sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp))
+      .slice(0, 8);
+
+    res.json({ success: true, activity: recentActivity });
+  } catch (error) {
+    console.error('Recent activity error:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// Deposits endpoint - shows all Paystack payments
+app.get('/api/admin/deposits', requireAdmin, async (req, res) => {
+  try {
+    const paymentsSnapshot = await admin.database().ref('payments').once('value');
+    const usersSnapshot = await admin.database().ref('users').once('value');
+    
+    const payments = paymentsSnapshot.val() || {};
+    const users = usersSnapshot.val() || {};
+
+    const deposits = Object.entries(payments)
+      .map(([id, payment]) => {
+        const user = users[payment.userId] || {};
+        return {
+          id,
+          userId: payment.userId,
+          userName: `${user.firstName || 'Unknown'} ${user.lastName || ''}`.trim(),
+          userEmail: user.email || 'N/A',
+          amount: payment.amount,
+          reference: payment.reference,
+          status: payment.status,
+          source: payment.source || 'paystack',
+          timestamp: payment.timestamp,
+          walletCredited: payment.walletCredited || false
+        };
+      })
+      .sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
+
+    res.json({ success: true, deposits });
+  } catch (error) {
+    console.error('Deposits error:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
 // Admin Users Management
 app.get('/api/admin/users', requireAdmin, async (req, res) => {
   try {
