@@ -939,8 +939,8 @@ body {
                     <button class="wallet-btn" onclick="event.stopPropagation(); window.location.href='/wallet'">
                         <i class="fas fa-wallet me-1"></i>Fund
                     </button>
-                    <button class="wallet-btn" onclick="event.stopPropagation(); window.location.href='/purchase'">
-                        <i class="fas fa-bolt me-1"></i>Buy Data
+                    <button class="wallet-btn" onclick="event.stopPropagation(); openVerifyPaymentModal()" style="background-color: #228B22; border-color: #228B22;">
+                        <i class="fas fa-check-circle me-1"></i>Verify Payment
                     </button>
                 </div>
             </div>
@@ -1011,6 +1011,36 @@ body {
         </div>
     </main>
 
+    <!-- Verify Payment Modal -->
+    <div class="modal fade" id="verifyPaymentModal" tabindex="-1" aria-hidden="true" data-bs-backdrop="static" data-bs-keyboard="false">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content" style="border-radius: 16px; border: none; box-shadow: 0 10px 40px rgba(0,0,0,0.15);">
+                <div class="modal-header" style="border-bottom: none; padding: 2rem 2rem 1rem 2rem;">
+                    <h5 class="modal-title" style="font-weight: 700; font-size: 1.3rem; color: #333;">
+                        <i class="fas fa-check-circle me-2" style="color: #6c63ff;"></i>Verify Payment
+                    </h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body" style="padding: 1rem 2rem;">
+                    <p style="color: #495057; margin-bottom: 1.5rem;">
+                        If your payment hasn't appeared in your wallet after 30 seconds, enter your Paystack transaction reference below to manually verify it.
+                    </p>
+                    <div class="mb-3">
+                        <label for="verifyReference" class="form-label" style="font-weight: 600; color: #495057; font-size: 0.95rem;">Paystack Reference</label>
+                        <input type="text" class="form-control" id="verifyReference" placeholder="e.g, ts0u73nlmi" style="border-color: #e0e0e0; font-size: 1rem;">
+                        <small class="text-muted d-block mt-2" style="font-size: 0.85rem;">You'll find this in the Paystack receipt or confirmation email</small>
+                    </div>
+                </div>
+                <div class="modal-footer" style="border-top: 1px solid #e9ecef; padding: 1.5rem 2rem; gap: 0.75rem;">
+                    <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal" style="border-color: #e9ecef; color: #6c757d; padding: 0.6rem 1.5rem; border-radius: 8px; font-weight: 600;">Cancel</button>
+                    <button type="button" class="btn" id="verifyPaymentBtn" onclick="submitManualVerification()" style="padding: 0.6rem 1.5rem; min-height: auto; border-radius: 8px; background-color: #228B22; color: white; border: none; font-weight: 600;">
+                        <i class="fas fa-check me-2"></i>Verify & Credit
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <!-- Bottom Navigation -->
     <nav class="bottom-nav">
         <a href="/" class="nav-item active">
@@ -1040,8 +1070,113 @@ body {
             position: { x: 'center', y: 'top' }
         });
 
-        let currentUser = null;
+        // ============================================
+        // VERIFY PAYMENT FUNCTIONS - GLOBAL SCOPE
+        // ============================================
         let userBalance = 0;
+        let transactionPage = 1;
+
+        // Open verify payment modal
+        function openVerifyPaymentModal() {
+            try {
+                const modalElement = document.getElementById('verifyPaymentModal');
+                if (!modalElement) {
+                    console.error('Verify Payment Modal element not found');
+                    notyf.error('Modal not found. Please try again.');
+                    return;
+                }
+                
+                // Clear previous input
+                const refInput = document.getElementById('verifyReference');
+                if (refInput) refInput.value = '';
+                
+                // Show modal
+                const modal = new bootstrap.Modal(modalElement, {
+                    backdrop: 'static',
+                    keyboard: false
+                });
+                modal.show();
+                console.log('✅ Verify Payment modal opened');
+            } catch (error) {
+                console.error('Error opening modal:', error);
+                notyf.error('Failed to open payment verification. Please try again.');
+            }
+        }
+
+        // Submit manual verification
+        async function submitManualVerification() {
+            try {
+                const reference = document.getElementById('verifyReference').value.trim();
+                
+                if (!reference) {
+                    notyf.error('Please enter a payment reference');
+                    return;
+                }
+
+                const btn = document.getElementById('verifyPaymentBtn');
+                btn.disabled = true;
+                btn.innerHTML = '<i class="fas fa-spinner fa-spin me-2"></i>Verifying...';
+
+                console.log('🔐 Manually verifying payment with reference:', reference);
+                notyf.success('Verifying payment with Paystack...');
+
+                const response = await fetch('/api/verify-and-credit-payment', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    credentials: 'include',
+                    body: JSON.stringify({ reference })
+                });
+
+                const result = await response.json();
+                console.log('✅ Manual verification response:', result);
+
+                if (result.success) {
+                    const modal = bootstrap.Modal.getInstance(document.getElementById('verifyPaymentModal'));
+                    modal.hide();
+
+                    // Show different message based on whether payment was already credited or newly credited
+                    if (result.alreadyCredited) {
+                        notyf.success(`✅ Payment already verified! ₵${result.amount} added to your wallet`);
+                    } else {
+                        notyf.success(`✅ Payment verified! ₵${result.amount} added to your wallet!`);
+                    }
+                    
+                    // Update balance - with safety check
+                    if (result.newBalance !== undefined && result.newBalance !== null) {
+                        userBalance = result.newBalance;
+                        const balanceElement = document.getElementById('balanceText');
+                        if (balanceElement) {
+                            balanceElement.textContent = `₵${userBalance.toFixed(2)}`;
+                        }
+                    }
+
+                    // Clear input
+                    document.getElementById('verifyReference').value = '';
+                } else {
+                    if (result.alreadyCredited) {
+                        notyf.success('✅ This payment was already credited to your wallet');
+                        const modal = bootstrap.Modal.getInstance(document.getElementById('verifyPaymentModal'));
+                        modal.hide();
+                    } else {
+                        throw new Error(result.error || 'Verification failed');
+                    }
+                }
+            } catch (error) {
+                console.error('❌ Manual verification error:', error);
+                notyf.error('Verification failed: ' + error.message);
+            } finally {
+                const btn = document.getElementById('verifyPaymentBtn');
+                btn.disabled = false;
+                btn.innerHTML = '<i class="fas fa-check me-2"></i>Verify & Credit';
+            }
+        }
+        // ============================================
+        // END VERIFY PAYMENT FUNCTIONS
+        // ============================================
+
+        let currentUser = null;
         const POLL_INTERVAL = 30 * 1000;
         let pollTimer = null;
         
@@ -1804,6 +1939,7 @@ body {
                     console.error('Firebase messaging setup failed', err);
                 }
             })();
+        </script>
         </script>
         <!-- Session Timeout Manager -->
         <script src="/js/session-timeout.js"></script>
