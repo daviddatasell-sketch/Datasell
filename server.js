@@ -2929,14 +2929,14 @@ app.post('/api/verify-and-credit-payment', requireAuth, async (req, res) => {
     // Sanitize reference - only allow alphanumeric and common characters
     const cleanReference = reference.trim().toLowerCase();
     if (!/^[a-z0-9]+$/.test(cleanReference)) {
-      console.warn(`⚠️ [MANUAL-VERIFY] Invalid reference format attempt by ${userId}: ${reference}`);
+      console.warn(`⚠️ [AUTO-VERIFY] Invalid reference format attempt by ${userId}: ${reference}`);
       return res.status(400).json({ success: false, error: 'Invalid reference code format' });
     }
 
-    console.log(`🔍 [MANUAL-VERIFY] User ${userId} attempting manual payment verification for ref: ${cleanReference}`);
+    console.log(`🔍 [AUTO-VERIFY] User ${userId} attempting payment verification for ref: ${cleanReference}`);
 
     // STEP 1: Check if already credited in our database (FAST PATH - < 0.01s)
-    console.log(`⚡ [MANUAL-VERIFY] Checking local payments database...`);
+    console.log(`⚡ [AUTO-VERIFY] Checking local payments database for reference: ${cleanReference}`);
     const paymentsRef = admin.database().ref('payments');
     const existingPaymentSnapshot = await paymentsRef
       .orderByChild('reference')
@@ -2944,36 +2944,39 @@ app.post('/api/verify-and-credit-payment', requireAuth, async (req, res) => {
       .once('value');
 
     if (existingPaymentSnapshot.exists()) {
-      console.log(`✅ [MANUAL-VERIFY] Transaction already credited (found in payments DB) for ref: ${cleanReference}`);
+      console.log(`✅ [AUTO-VERIFY] Reference already in system (previously credited) for ref: ${cleanReference}`);
       // Get the payment record
       const payments = existingPaymentSnapshot.val();
       const payment = Object.values(payments)[0];
       
       // CRITICAL: Check if the payment belongs to the current user
       if (payment.userId !== userId) {
-        console.error(`❌ [MANUAL-VERIFY] Security: User ${userId} attempted to claim payment for different user ${payment.userId}`);
+        console.error(`❌ [AUTO-VERIFY] SECURITY BREACH ATTEMPT: User ${userId} tried to claim payment for user ${payment.userId}`);
         return res.status(403).json({ 
           success: false, 
-          error: '❌ Incorrect reference code. This payment belongs to a different account.'
+          error: '❌ Security validation failed. This payment belongs to a different account.'
         });
       }
       
-      // Get current balance for the response
-      const currentUserSnapshot = await userRef.once('value');
-      const currentUserData = currentUserSnapshot.val();
-      const currentBalance = currentUserData.walletBalance || 0;
+      // If it already belongs to this user and is credited, it means manual admin credited it or it was auto-credited before
+      console.log(`✅ [AUTO-VERIFY] Payment already credited to user ${userId}. Balance should be updated.`);
+      
+      // Fetch current user balance to return accurate info
+      const userSnapshot = await userRef.once('value');
+      const userData = userSnapshot.val();
       
       return res.status(200).json({ 
         success: true, 
-        message: '✅ This payment was already verified! ₵' + payment.amount + ' added to your wallet',
+        message: `✅ Payment verified! ₵${payment.amount} has been credited to your wallet (previously processed)`,
         amount: payment.amount,
-        newBalance: currentBalance,
+        newBalance: userData.walletBalance || 0,
+        reference: cleanReference,
         alreadyCredited: true
       });
     }
 
     // STEP 2: Verify payment with Paystack - THIS IS THE PRIMARY VALIDATION
-    console.log(`🔐 [MANUAL-VERIFY] Verifying with Paystack API...`);
+    console.log(`🔐 [AUTO-VERIFY] Verifying with Paystack API...`);
     let paystackResponse;
     try {
       paystackResponse = await axios.get(
@@ -2986,7 +2989,7 @@ app.post('/api/verify-and-credit-payment', requireAuth, async (req, res) => {
         }
       );
     } catch (paystackError) {
-      console.error(`❌ [MANUAL-VERIFY] Paystack API error:`, {
+      console.error(`❌ [AUTO-VERIFY] Paystack API error:`, {
         status: paystackError.response?.status,
         message: paystackError.message,
         data: paystackError.response?.data
@@ -3002,7 +3005,7 @@ app.post('/api/verify-and-credit-payment', requireAuth, async (req, res) => {
       
       return res.status(400).json({ 
         success: false, 
-        error: '❌ Could not verify payment. Please check your reference code and try again.',
+        error: '❌ Could not verify payment with provider. Please try again shortly.',
         paystackStatus: paystackError.response?.status
       });
     }
@@ -3011,7 +3014,7 @@ app.post('/api/verify-and-credit-payment', requireAuth, async (req, res) => {
 
     // STRICT VALIDATION: Check if payment status is 'success'
     if (!paystackData.status || paystackData.data?.status !== 'success') {
-      console.warn(`⚠️ [MANUAL-VERIFY] Payment not confirmed by Paystack for ref: ${cleanReference}. Status: ${paystackData.data?.status}`);
+      console.warn(`⚠️ [AUTO-VERIFY] Paystack shows payment not successful. Status: ${paystackData.data?.status}, Ref: ${cleanReference}`);
       
       const status = paystackData.data?.status || 'unknown';
       if (status === 'failed') {
@@ -3036,13 +3039,79 @@ app.post('/api/verify-and-credit-payment', requireAuth, async (req, res) => {
     const originalAmount = metadata?.originalAmount || (amount / 100);
     const amountInCedis = parseFloat(originalAmount);
     const paystackUserId = metadata?.userId;
+    const paystackEmail = customer?.email || metadata?.email;
+    const paystackTimestamp = paystackData.data?.paid_at;
 
-    // CRITICAL VALIDATION: Verify the reference belongs to the logged-in user
-    if (paystackUserId && paystackUserId !== userId) {
-      console.error(`❌ [MANUAL-VERIFY] Security: User ${userId} attempted to claim payment for different user ${paystackUserId}`);
+    // EMAIL VALIDATION: Verify Paystack email matches user account email
+    if (paystackEmail && paystackEmail.toLowerCase() !== userEmail.toLowerCase()) {
+      console.error(`❌ [AUTO-VERIFY] SECURITY: Email mismatch for ref ${cleanReference}. User: ${userEmail}, Paystack: ${paystackEmail}`);
       return res.status(403).json({ 
         success: false, 
-        error: '❌ Incorrect reference code. This payment belongs to a different account.'
+        error: '❌ Email mismatch. The payment was made with a different email address than your account.'
+      });
+    }
+
+    // TIME WINDOW CHECK: Only allow verification for recent payments (last 24 hours)
+    // This prevents very old transactions from being credited multiple times
+    if (paystackTimestamp) {
+      const paymentDate = new Date(paystackTimestamp);
+      const twentyFourHoursAgo = new Date();
+      twentyFourHoursAgo.setHours(twentyFourHoursAgo.getHours() - 24);
+      
+      if (paymentDate < twentyFourHoursAgo) {
+        console.warn(`⚠️ [AUTO-VERIFY] Payment too old (${paymentDate.toISOString()}) - beyond 24hr window. Ref: ${cleanReference}`);
+        return res.status(403).json({ 
+          success: false, 
+          error: '❌ This payment is older than 24 hours. Automatic creditation is disabled for older payments. Please contact support for manual assistance.'
+        });
+      }
+    }
+
+    // CRITICAL VALIDATION: Verify the reference belongs to the logged-in user
+    // Check BOTH userId from metadata AND email address
+    if (paystackUserId && paystackUserId !== userId) {
+      console.error(`❌ [AUTO-VERIFY] SECURITY: User ${userId} attempted to claim payment for different user ${paystackUserId}`);
+      return res.status(403).json({ 
+        success: false, 
+        error: '❌ Security validation failed. This payment belongs to a different account.'
+      });
+    }
+    
+    // Additional layer: if no userId in metadata, email must match (failsafe validation)
+    if (!paystackUserId && paystackEmail && paystackEmail.toLowerCase() !== userEmail.toLowerCase()) {
+      console.error(`❌ [AUTO-VERIFY] SECURITY: Email doesn't match despite no userId in metadata for ref ${cleanReference}`);
+      return res.status(403).json({ 
+        success: false, 
+        error: '❌ Payment email does not match your account email.'
+      });
+    }
+
+    // FINAL SAFETY CHECK: Re-verify the reference hasn't been credited between our check and now (race condition prevention)
+    const finalCheckSnapshot = await paymentsRef
+      .orderByChild('reference')
+      .equalTo(cleanReference)
+      .once('value');
+    
+    if (finalCheckSnapshot.exists()) {
+      console.warn(`⚠️ [AUTO-VERIFY] RACE CONDITION DETECTED: Reference ${cleanReference} was already credited by another request`);
+      const finalPayment = Object.values(finalCheckSnapshot.val())[0];
+      
+      // If it's the same user, just return success with current balance
+      if (finalPayment.userId === userId) {
+        const userSnapshot = await userRef.once('value');
+        const userData = userSnapshot.val();
+        return res.status(200).json({
+          success: true,
+          message: `✅ Payment verified! ₵${finalPayment.amount} has been credited to your wallet`,
+          amount: finalPayment.amount,
+          newBalance: userData.walletBalance || 0,
+          reference: cleanReference
+        });
+      }
+      
+      return res.status(409).json({ 
+        success: false, 
+        error: '❌ This reference code was just verified by another request. Please refresh and check your balance.'
       });
     }
 
@@ -3059,7 +3128,7 @@ app.post('/api/verify-and-credit-payment', requireAuth, async (req, res) => {
     const newBalance = currentBalance + amountInCedis;
 
     // CREDIT THE WALLET
-    console.log(`💰 [MANUAL-VERIFY] CREDITING WALLET: ${userId} | Amount: ₵${amountInCedis} | Reference: ${cleanReference}`);
+    console.log(`💰 [AUTO-VERIFY] AUTO-CREDITING WALLET: ${userId} | Amount: ₵${amountInCedis} | Reference: ${cleanReference}`);
     
     await userRef.update({
       walletBalance: newBalance,
@@ -3075,17 +3144,21 @@ app.post('/api/verify-and-credit-payment', requireAuth, async (req, res) => {
     const paymentRef = admin.database().ref('payments').push();
     await paymentRef.set({
       userId,
+      userEmail: userEmail,
       amount: amountInCedis,
       paystackAmount: amount / 100,
       fee: (amount / 100) - amountInCedis,
       reference: cleanReference,
       status: 'success',
-      source: 'manual_verification',
+      source: 'automatic_verification',
+      autoVerified: true,
+      autoVerificationTime: new Date().toISOString(),
       paystackData: paystackData.data,
-      timestamp: new Date().toISOString()
+      timestamp: new Date().toISOString(),
+      verifiedAt: new Date().toISOString()
     });
 
-    console.log(`✅ [MANUAL-VERIFY] Payment verified and credited for ${userId} | Ref: ${cleanReference} | Amount: ₵${amountInCedis}`);
+    console.log(`✅ [AUTO-VERIFY] Payment auto-credited for ${userId} | Ref: ${cleanReference} | Amount: ₵${amountInCedis}`);
 
     // Send notifications async
     setImmediate(async () => {
@@ -3095,7 +3168,7 @@ app.post('/api/verify-and-credit-payment', requireAuth, async (req, res) => {
         const message = `Hello ${username}, your payment of ₵${amountInCedis} has been verified and credited to your wallet!`;
         sendSmsToUser(userId, phoneFallback, message);
       } catch (err) {
-        console.error(`⚠️ [MANUAL-VERIFY] SMS error:`, err.message);
+        console.error(`⚠️ [AUTO-VERIFY] SMS error:`, err.message);
       }
     });
 
@@ -3108,7 +3181,7 @@ app.post('/api/verify-and-credit-payment', requireAuth, async (req, res) => {
     });
 
   } catch (error) {
-    console.error(`❌ [MANUAL-VERIFY] Error:`, {
+    console.error(`❌ [AUTO-VERIFY] Error:`, {
       message: error.message,
       stack: error.stack,
       paystackError: error.response?.data
@@ -3481,38 +3554,6 @@ app.post('/api/purchase', async (req, res) => {
 // ====================
 
 // Admin Packages Management
-app.get('/api/admin/packages', requireAdmin, async (req, res) => {
-  try {
-    // Use cache if available
-    if (!packageCache.isInitialized) {
-      const packagesSnapshot = await admin.database().ref('packages').once('value');
-      const packages = packagesSnapshot.val() || {};
-      
-      packageCache.mtn = Object.entries(packages.mtn || {}).map(([key, pkg]) => ({
-        id: key,
-        ...pkg
-      }));
-      
-      packageCache.at = Object.entries(packages.at || {}).map(([key, pkg]) => ({
-        id: key,
-        ...pkg
-      }));
-      packageCache.isInitialized = true;
-    }
-    
-    res.json({ 
-      success: true, 
-      packages: {
-        mtn: packageCache.mtn,
-        at: packageCache.at
-      }
-    });
-  } catch (error) {
-    console.error('Admin packages error:', error);
-    res.status(500).json({ success: false, error: error.message });
-  }
-});
-
 // Update package price
 app.post('/api/admin/packages/update-price', requireAdmin, async (req, res) => {
   try {
@@ -3739,6 +3780,70 @@ app.post('/api/admin/packages/delete', requireAdmin, async (req, res) => {
   }
 });
 
+// Admin Packages Management
+app.get('/api/admin/packages', requireAdmin, async (req, res) => {
+  try {
+    const { network } = req.query;
+    
+    let packages = [];
+    
+    if (network && network !== 'all') {
+      // Get packages for specific network
+      const networkPath = network === 'airteltigo' || network === 'at' ? 'at' : network;
+      const packagesSnapshot = await admin.database().ref(`packages/${networkPath}`).once('value');
+      const data = packagesSnapshot.val();
+      console.log(`📦 Admin fetching network=${network}, path=packages/${networkPath}, data type: ${typeof data}, null: ${data === null}, keys: ${data ? Object.keys(data).length : 0}`);
+      packages = Object.entries(data || {}).map(([id, pkg]) => ({
+        id,
+        network: networkPath,
+        ...pkg
+      }));
+    } else {
+      // Get all packages from both networks
+      const mtnSnapshot = await admin.database().ref('packages/mtn').once('value');
+      const atSnapshot = await admin.database().ref('packages/at').once('value');
+      
+      const mtnData = mtnSnapshot.val();
+      const atData = atSnapshot.val();
+      
+      console.log(`📦 Admin fetching all packages - MTN: ${mtnData ? Object.keys(mtnData).length : 0}, AT: ${atData ? Object.keys(atData).length : 0}`);
+      
+      Object.entries(mtnData || {}).forEach(([id, pkg]) => {
+        packages.push({
+          id,
+          network: 'mtn',
+          ...pkg
+        });
+      });
+      
+      Object.entries(atData || {}).forEach(([id, pkg]) => {
+        packages.push({
+          id,
+          network: 'at',
+          ...pkg
+        });
+      });
+    }
+    
+    // Sort by network and name
+    packages.sort((a, b) => {
+      if (a.network !== b.network) return a.network.localeCompare(b.network);
+      return (a.name || '').localeCompare(b.name || '');
+    });
+    
+    console.log(`✅ Admin packages fetched: ${packages.length} packages found`);
+    
+    res.json({ 
+      success: true, 
+      packages,
+      count: packages.length
+    });
+  } catch (error) {
+    console.error('❌ Admin packages error:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
 // Admin Transactions Management
 app.get('/api/admin/transactions', requireAdmin, async (req, res) => {
   try {
@@ -3880,7 +3985,7 @@ app.post('/api/admin/transactions/:id/refund', requireAdmin, async (req, res) =>
 
     // Log admin action
     await admin.database().ref('adminLogs').push({
-      adminId: req.session.userId,
+      adminId: req.session.user?.uid || 'system',
       action: 'refund_transaction',
       details: `Refunded transaction ${id} for user ${transaction.userId.substring(0, 8)}...`,
       timestamp: new Date().toISOString(),
@@ -3914,9 +4019,9 @@ app.post('/api/admin/transactions/:id/toggle-delivery', requireAdmin, async (req
 
     // Log admin action
     await admin.database().ref('adminLogs').push({
-      adminId: req.session.userId,
+      adminId: req.session.user?.uid || 'system',
       action: 'toggle_delivery',
-      details: `${newDeliveredStatus ? 'Marked' : 'Unmarkked'} transaction ${id} as ${newDeliveredStatus ? 'delivered' : 'pending'}`,
+      details: `${newDeliveredStatus ? 'Marked' : 'Unmarked'} transaction ${id} as ${newDeliveredStatus ? 'delivered' : 'pending'}`,
       timestamp: new Date().toISOString(),
       ip: req.ip
     });
@@ -3932,6 +4037,29 @@ app.post('/api/admin/transactions/:id/toggle-delivery', requireAdmin, async (req
 });
 
 // Admin Pricing Groups
+app.get('/api/admin/pricing', requireAdmin, async (req, res) => {
+  try {
+    const pricingSnapshot = await admin.database().ref('pricingGroups').once('value');
+    const pricing = pricingSnapshot.val() || {
+      regular: { discount: 0, name: 'Regular Users' },
+      vip: { discount: 10, name: 'VIP Users' },
+      premium: { discount: 15, name: 'Premium Users' }
+    };
+
+    // Flatten for easier frontend access
+    const flatPricing = {
+      regular: pricing.regular?.discount || 0,
+      vip: pricing.vip?.discount || 10,
+      premium: pricing.premium?.discount || 15
+    };
+
+    res.json({ success: true, pricing: flatPricing });
+  } catch (error) {
+    console.error('Pricing error:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
 app.get('/api/admin/pricing/groups', requireAdmin, async (req, res) => {
   try {
     const pricingSnapshot = await admin.database().ref('pricingGroups').once('value');
@@ -3964,7 +4092,7 @@ app.post('/api/admin/pricing/groups/update', requireAdmin, async (req, res) => {
 
     // Log admin action
     await admin.database().ref('adminLogs').push({
-      adminId: req.session.userId,
+      adminId: req.session.user?.uid || 'system',
       action: 'update_pricing_group',
       details: `Updated ${group} group discount to ${discount}%`,
       timestamp: new Date().toISOString(),
@@ -3995,7 +4123,7 @@ app.post('/api/admin/users/:uid/update-role', requireAdmin, async (req, res) => 
 
     // Log admin action
     await admin.database().ref('adminLogs').push({
-      adminId: req.session.userId,
+      adminId: req.session.user?.uid || 'system',
       action: 'update_user_role',
       details: `Changed user ${uid.substring(0, 8)}... pricing group to ${role}`,
       timestamp: new Date().toISOString(),
@@ -4030,7 +4158,7 @@ app.post('/api/admin/users/:uid/toggle-suspend', requireAdmin, async (req, res) 
 
     // Log admin action
     await admin.database().ref('adminLogs').push({
-      adminId: req.session.userId,
+      adminId: req.session.user?.uid || 'system',
       action: newSuspended ? 'suspend_user' : 'activate_user',
       details: `${newSuspended ? 'Suspended' : 'Activated'} user ${uid.substring(0, 8)}...`,
       timestamp: new Date().toISOString(),
@@ -4073,7 +4201,7 @@ app.post('/api/admin/users/:uid/add-funds', requireAdmin, async (req, res) => {
 
     // Log transaction
     await admin.database().ref('adminLogs').push({
-      adminId: req.session.userId,
+      adminId: req.session.user?.uid || 'system',
       action: 'add_funds',
       details: `Added ₵${amount} to user ${uid.substring(0, 8)}... wallet. Note: ${note || 'N/A'}`,
       timestamp: new Date().toISOString(),
@@ -4123,7 +4251,7 @@ app.post('/api/admin/users/:uid/deduct-funds', requireAdmin, async (req, res) =>
 
     // Log admin action
     await admin.database().ref('adminLogs').push({
-      adminId: req.session.userId,
+      adminId: req.session.user?.uid || 'system',
       action: 'deduct_funds',
       details: `Deducted ₵${amount} from user ${uid.substring(0, 8)}... wallet. Note: ${note || 'N/A'}`,
       timestamp: new Date().toISOString(),
