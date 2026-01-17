@@ -633,8 +633,10 @@ const requireAdmin = (req, res, next) => {
 // ====================
 
 app.get('/', (req, res) => {
-  // Serve public landing page (marketing homepage) to everyone
-  res.sendFile(path.join(__dirname, 'public', 'landing.html'));
+  // Serve clean, static public homepage (CRITICAL FOR SEO)
+  // This is a BRAND PAGE - NOT an app interface
+  // Google indexes this as the official homepage for DataSell Ghana
+  res.sendFile(path.join(__dirname, 'public', 'home.html'));
 });
 
 app.get('/dashboard', requireAuth, (req, res) => {
@@ -4825,11 +4827,6 @@ app.get('/api/order-status/:transactionId', requireAuth, async (req, res) => {
 // Health check endpoint for Render deployment
 app.get('/health', (req, res) => {
   res.status(200).json({ status: 'ok', timestamp: new Date().toISOString() });
-});
-
-// Basic root endpoint
-app.get('/', (req, res) => {
-  res.send('DataSell Server is running');
 });
 
 // Start the server
