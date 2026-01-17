@@ -632,7 +632,7 @@ const requireAdmin = (req, res, next) => {
 // ENHANCED PAGE ROUTES
 // ====================
 
-app.get('/', requireAuth, (req, res) => {
+app.get('/', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'index.html'));
 });
 
