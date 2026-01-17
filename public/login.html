@@ -546,7 +546,7 @@ document.getElementById('loginForm').addEventListener('submit', async (e) => {
         
         if (data.success) {
             notyf.success('✅ Login successful!');
-            setTimeout(() => window.location.href = '/', 1500);
+            setTimeout(() => window.location.href = '/dashboard', 1500);
         } else {
             notyf.error(data.error || 'Login failed');
         }
@@ -565,7 +565,7 @@ async function checkAuth() {
         const response = await fetch('/api/check-auth', { credentials: 'include' });
         const data = await response.json();
         if (data.success && data.authenticated) {
-            window.location.href = '/';
+            window.location.href = '/dashboard';
         }
     } catch (error) {
         // Not authenticated, stay on login page

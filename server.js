@@ -633,21 +633,27 @@ const requireAdmin = (req, res, next) => {
 // ====================
 
 app.get('/', (req, res) => {
-  res.sendFile(path.join(__dirname, 'public', 'index.html'));
+  // Serve public landing page (marketing homepage) to everyone
+  res.sendFile(path.join(__dirname, 'public', 'landing.html'));
+});
+
+app.get('/dashboard', requireAuth, (req, res) => {
+  // Serve authenticated dashboard to logged-in users
+  res.sendFile(path.join(__dirname, 'public', 'dashboard.html'));
 });
 
 app.get('/login', (req, res) => {
-  if (req.session.user) return res.redirect('/');
+  if (req.session.user) return res.redirect('/dashboard');
   res.sendFile(path.join(__dirname, 'public', 'login.html'));
 });
 
 app.get('/signup', (req, res) => {
-  if (req.session.user) return res.redirect('/');
+  if (req.session.user) return res.redirect('/dashboard');
   res.sendFile(path.join(__dirname, 'public', 'signup.html'));
 });
 
 app.get('/forgot-password', (req, res) => {
-  if (req.session.user) return res.redirect('/');
+  if (req.session.user) return res.redirect('/dashboard');
   res.sendFile(path.join(__dirname, 'public', 'forgot-password.html'));
 });
 
