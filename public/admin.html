@@ -2384,7 +2384,10 @@ async function loadPackages(network) {
             <td>₵${parseFloat(pkg.price || 0).toFixed(2)}</td>
             <td>${pkg.validity || 'N/A'}</td>
             <td><span style="color: ${statusColor}">${statusText}</span></td>
-            <td><button class="btn btn-sm" onclick="editPackage('${pkg.id}', '${currentPackageNetwork}')">Edit</button></td>
+            <td>
+              <button class="btn btn-sm" onclick="editPackage('${pkg.id}', '${currentPackageNetwork}')">Edit</button>
+              <button class="btn btn-sm" style="background-color: #ef4444; color: white; margin-left: 0.25rem;" onclick="deletePackage('${pkg.id}', '${pkg.name}', '${currentPackageNetwork}')">Delete</button>
+            </td>
           </tr>
         `;
       }).join('');
@@ -2489,6 +2492,46 @@ function editPackage(packageId, network) {
       console.error('Error loading package:', error);
       Swal.fire('Error', 'Failed to load package details', 'error');
     });
+}
+
+// Delete package function
+function deletePackage(packageId, packageName, network) {
+  Swal.fire({
+    title: 'Delete Package?',
+    text: `Are you sure you want to delete "${packageName}" (${packageId})? This action cannot be undone.`,
+    icon: 'warning',
+    showCancelButton: true,
+    confirmButtonColor: '#ef4444',
+    cancelButtonColor: '#6b7280',
+    confirmButtonText: 'Yes, Delete it!'
+  }).then(async (result) => {
+    if (result.isConfirmed) {
+      try {
+        const response = await fetch('/api/admin/packages/delete', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
+          body: JSON.stringify({ network, packageId })
+        });
+        
+        const data = await response.json();
+        
+        if (data.success) {
+          Swal.fire(
+            'Deleted!',
+            `Package "${packageName}" has been deleted successfully.`,
+            'success'
+          );
+          loadPackages(network);
+        } else {
+          Swal.fire('Error', data.error || 'Failed to delete package', 'error');
+        }
+      } catch (error) {
+        console.error('Error deleting package:', error);
+        Swal.fire('Error', 'Failed to delete package: ' + error.message, 'error');
+      }
+    }
+  });
 }
 
 // Add package function
