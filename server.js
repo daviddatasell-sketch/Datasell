@@ -451,6 +451,7 @@ app.use(cors(corsOptions));
 app.use((req, res, next) => {
   // Skip timeout check for public/auth endpoints
   const publicRoutes = [
+    '/',
     '/login',
     '/signup',
     '/forgot-password',
