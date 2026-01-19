@@ -188,7 +188,7 @@
       margin-bottom: 1rem;
       font-weight: 800;
       letter-spacing: -1px;
-      animation: slideDown 0.8s ease;
+      animation: slideDown 1.5s ease;
     }
 
     .hero p {
@@ -353,6 +353,7 @@
       font-weight: 800;
       color: var(--accent);
       margin-bottom: 0.5rem;
+      white-space: nowrap;
     }
 
     .stat-label {
@@ -477,11 +478,11 @@
     @keyframes slideDown {
       from {
         opacity: 0;
-        transform: translateY(-30px);
+        transform: translateX(-150%);
       }
       to {
         opacity: 1;
-        transform: translateY(0);
+        transform: translateX(0);
       }
     }
 
@@ -835,10 +836,9 @@
 
   <!-- HEADER -->
   <header>
-    <strong>DataSell Ghana</strong>
+    <strong>Datasell Ghana</strong>
     <nav>
       <a href="/login"><i class="fas fa-sign-in-alt"></i> Login</a>
-      <a href="/signup"><i class="fas fa-user-plus"></i> Create Account</a>
     </nav>
   </header>
 
@@ -860,12 +860,12 @@
   <div class="stats-section">
     <div class="stats-grid">
       <div class="stat-box">
-        <div class="stat-number">30K+</div>
+        <div class="stat-number" id="userCounter">0</div>
         <div class="stat-label">Daily Users</div>
       </div>
       <div class="stat-box">
-        <div class="stat-number">⚡ 10s</div>
-        <div class="stat-label">Instant Delivery</div>
+        <div class="stat-number">⚡ 5-30mins</div>
+        <div class="stat-label">Fast Delivery</div>
       </div>
       <div class="stat-box">
         <div class="stat-number">100%</div>
@@ -997,6 +997,49 @@
       <a href="https://twitter.com/datasellgh" target="_blank" style="color: var(--accent); font-size: 1.5rem; text-decoration: none;"><i class="fab fa-twitter"></i></a>
     </div>
   </footer>
+
+  <script>
+    // Animate the daily users counter from 1 to 30,000+
+    function animateCounter() {
+      const counterElement = document.getElementById('userCounter');
+      if (!counterElement) return;
+
+      let currentValue = 0;
+      const targetValue = 30000;
+      const duration = 5000; // 5 seconds (4-6 seconds range)
+      const startTime = Date.now();
+
+      function updateCounter() {
+        const elapsed = Date.now() - startTime;
+        const progress = Math.min(elapsed / duration, 1);
+        
+        // Easing function for smooth animation
+        currentValue = Math.floor(progress * targetValue);
+        
+        if (currentValue >= targetValue) {
+          counterElement.textContent = '30,000+';
+        } else {
+          counterElement.textContent = currentValue.toLocaleString() + '+';
+        }
+
+        if (progress < 1) {
+          requestAnimationFrame(updateCounter);
+        }
+      }
+
+      updateCounter();
+    }
+
+    // Start animation when page loads
+    document.addEventListener('DOMContentLoaded', animateCounter);
+
+    // Also trigger on page visibility change (in case tab was hidden)
+    document.addEventListener('visibilitychange', () => {
+      if (!document.hidden) {
+        animateCounter();
+      }
+    });
+  </script>
 
 </body>
 </html>
