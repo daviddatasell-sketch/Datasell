@@ -797,7 +797,7 @@
 
     <!-- Bottom Navigation -->
     <nav class="bottom-nav">
-        <a href="/" class="nav-item">
+        <a href="/dashboard" class="nav-item">
             <i class="fas fa-home"></i>
             <span>Home</span>
         </a>
@@ -1279,8 +1279,8 @@
                 if (subtitle) subtitle.textContent = 'Your data is being delivered';
                 if (primaryBtn) {
                     primaryBtn.textContent = '';
-                    primaryBtn.innerHTML = '<i class="fas fa-list me-2"></i>View Orders';
-                    primaryBtn.onclick = () => { if (successModal) successModal.hide(); setTimeout(()=>window.location.href='/orders',300); };
+                    primaryBtn.innerHTML = '<i class="fas fa-times me-2"></i>Close';
+                    primaryBtn.onclick = () => { if (successModal) successModal.hide(); };
                 }
             } else {
                 // failed
