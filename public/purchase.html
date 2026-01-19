@@ -1272,7 +1272,6 @@
             const title = document.getElementById('resultTitle');
             const subtitle = document.getElementById('resultSubtitle');
             const primaryBtn = document.getElementById('resultPrimaryBtn');
-
             if (status === 'success') {
                 if (icon) { icon.className = 'fas fa-check'; icon.style.color = '#ffffff'; }
                 if (iconWrap) { iconWrap.style.background = '#2f855a'; }
@@ -1280,8 +1279,8 @@
                 if (subtitle) subtitle.textContent = 'Your data is being delivered';
                 if (primaryBtn) {
                     primaryBtn.textContent = '';
-                    primaryBtn.innerHTML = '<i class="fas fa-home me-2"></i>Back to Home';
-                    primaryBtn.onclick = () => { if (successModal) successModal.hide(); setTimeout(()=>window.location.href='/',300); };
+                    primaryBtn.innerHTML = '<i class="fas fa-list me-2"></i>View Orders';
+                    primaryBtn.onclick = () => { if (successModal) successModal.hide(); setTimeout(()=>window.location.href='/orders',300); };
                 }
             } else {
                 // failed
