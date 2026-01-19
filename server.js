@@ -899,6 +899,29 @@ app.post('/api/signup', async (req, res) => {
   }
 });
 
+// Check authentication status endpoint (used by login page to redirect if already logged in)
+app.get('/api/check-auth', (req, res) => {
+  if (req.session && req.session.user) {
+    // User is logged in
+    return res.json({
+      success: true,
+      authenticated: true,
+      user: {
+        uid: req.session.user.uid,
+        email: req.session.user.email,
+        firstName: req.session.user.firstName,
+        lastName: req.session.user.lastName
+      }
+    });
+  } else {
+    // User is not logged in
+    return res.json({
+      success: true,
+      authenticated: false
+    });
+  }
+});
+
 // Enhanced User Login
 app.post('/api/login', async (req, res) => {
   try {
@@ -2925,6 +2948,20 @@ app.post('/api/paystack/webhook', async (req, res) => {
 // DATAMART WEBHOOK ENDPOINT - Order Status Updates
 // Receives real-time order status updates from Datamart
 // ============================================
+// DATAMART WEBHOOK ENDPOINT - Order Status Updates
+// ============================================
+
+// Test endpoint to verify webhook is accessible
+app.get('/api/datamart-webhook', (req, res) => {
+  res.status(200).json({
+    success: true,
+    message: 'Datamart webhook endpoint is accessible',
+    webhook_url: 'https://datasell.store/api/datamart-webhook',
+    method: 'POST',
+    timestamp: new Date().toISOString()
+  });
+});
+
 app.post('/api/datamart-webhook', async (req, res) => {
   try {
     const crypto = require('crypto');
@@ -2934,6 +2971,7 @@ app.post('/api/datamart-webhook', async (req, res) => {
     const secret = process.env.DATAMART_WEBHOOK_SECRET;
 
     console.log(`📩 [DATAMART-WEBHOOK] Received event: ${event}`);
+    console.log(`📩 [DATAMART-WEBHOOK] Webhook URL: https://datasell.store/api/datamart-webhook`);
 
     // Verify signature
     if (!secret) {
@@ -3052,6 +3090,9 @@ app.post('/api/datamart-webhook', async (req, res) => {
 
   } catch (error) {
     console.error(`❌ [DATAMART-WEBHOOK] Error:`, error.message);
+    console.error(`❌ [DATAMART-WEBHOOK] Full error:`, error);
+    console.error(`❌ [DATAMART-WEBHOOK] Request body:`, req.body);
+    console.error(`❌ [DATAMART-WEBHOOK] Headers:`, req.headers);
     return res.status(200).json({ received: true, error: error.message });
   }
 });
@@ -4865,19 +4906,20 @@ function getStatusMessage(status) {
   return messages[status?.toLowerCase()] || `Your order status: ${status}`;
 }
 
-// Start periodic sync (every 5 minutes) - DISABLED for now
-console.log('⏰ Datamart order status sync - TEMPORARILY DISABLED during deployment');
+// Start periodic sync (every 5 minutes) - DISABLED
+// Only using Datamart webhook for real-time status updates
+console.log('⏰ Datamart order status sync - DISABLED (webhook only)');
 /*
 setInterval(() => {
   syncDatamartOrderStatus().catch(err => console.error('Sync error:', err));
 }, 5 * 60 * 1000);
 */
 
-// DISABLED: Run sync after 60 seconds (give server time to start and respond to health checks)
+// DISABLED: Run sync after 30 seconds
 // setTimeout(() => {
 //   console.log('🔄 Starting initial Datamart sync...');
 //   syncDatamartOrderStatus().catch(err => console.error('Initial sync error:', err));
-// }, 60000);
+// }, 30000);
 
 // Keep the process alive indefinitely (prevent Node.js from exiting)
 setInterval(() => {
