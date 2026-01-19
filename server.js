@@ -459,6 +459,7 @@ app.use((req, res, next) => {
     '/api/login',
     '/api/signup',
     '/api/auth/verify',
+    '/api/check-auth',
     '/api/health',
     '/api/ping',
     '/api/hubnet-webhook',
