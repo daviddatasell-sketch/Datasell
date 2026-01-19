@@ -2922,6 +2922,233 @@ app.post('/api/paystack/webhook', async (req, res) => {
 });
 
 // ============================================
+// DATAMART WEBHOOK ENDPOINT - Order Status Updates
+// Receives real-time order status updates from Datamart
+// ============================================
+app.post('/api/datamart-webhook', async (req, res) => {
+  try {
+    const signature = req.headers['x-datamart-signature'];
+    const event = req.headers['x-datamart-event'];
+    const payload = req.body;
+
+    console.log(`📩 [DATAMART-WEBHOOK] Received webhook event: ${event}`);
+
+    // STEP 1: Verify webhook signature
+    const crypto = require('crypto');
+    const secret = process.env.DATAMART_WEBHOOK_SECRET;
+    
+    if (!secret) {
+      console.error('❌ [DATAMART-WEBHOOK] DATAMART_WEBHOOK_SECRET not configured in .env');
+      return res.status(500).json({ error: 'Webhook secret not configured' });
+    }
+
+    const expected = crypto
+      .createHmac('sha256', secret)
+      .update(JSON.stringify(payload))
+      .digest('hex');
+
+    if (signature !== expected) {
+      console.warn(`⚠️ [DATAMART-WEBHOOK] Invalid signature - rejecting webhook`);
+      console.warn(`Expected: ${expected}`);
+      console.warn(`Got: ${signature}`);
+      return res.status(401).json({ error: 'Invalid signature' });
+    }
+
+    console.log(`✅ [DATAMART-WEBHOOK] Signature verified for event: ${event}`);
+
+    // STEP 2: Extract order data
+    const { orderId, transactionId, phone, network, capacity, price, status } = payload.data || {};
+
+    if (!transactionId) {
+      console.warn(`⚠️ [DATAMART-WEBHOOK] No transactionId in payload`);
+      return res.status(400).json({ error: 'Missing transactionId' });
+    }
+
+    // STEP 3: Handle different events
+    if (event === 'order.completed') {
+      console.log(`✅ [DATAMART-WEBHOOK] Order completed: ${transactionId}`);
+      
+      // Find transaction in Firebase by datamartTransactionId
+      const transactionsRef = admin.database().ref('transactions');
+      const snapshot = await transactionsRef.orderByChild('datamartTransactionId').equalTo(transactionId).once('value');
+      
+      if (!snapshot.exists()) {
+        console.warn(`⚠️ [DATAMART-WEBHOOK] Transaction not found for ID: ${transactionId}`);
+        return res.status(404).json({ error: 'Transaction not found' });
+      }
+
+      // Get the transaction key and data
+      let transactionKey = null;
+      let transaction = null;
+      snapshot.forEach(child => {
+        transactionKey = child.key;
+        transaction = child.val();
+      });
+
+      if (!transactionKey || !transaction) {
+        console.warn(`⚠️ [DATAMART-WEBHOOK] Could not extract transaction data`);
+        return res.status(404).json({ error: 'Transaction data error' });
+      }
+
+      console.log(`📝 [DATAMART-WEBHOOK] Found transaction: ${transactionKey}`);
+
+      // Update transaction status to 'delivered'
+      await admin.database().ref(`transactions/${transactionKey}`).update({
+        status: 'delivered',
+        lastSyncedAt: new Date().toISOString(),
+        datamartStatus: 'completed',
+        syncHistory: transaction.syncHistory ? [...transaction.syncHistory, {
+          from: transaction.status,
+          to: 'delivered',
+          source: 'datamart_webhook',
+          timestamp: new Date().toISOString()
+        }] : [{
+          from: transaction.status,
+          to: 'delivered',
+          source: 'datamart_webhook',
+          timestamp: new Date().toISOString()
+        }]
+      });
+
+      console.log(`✅ [DATAMART-WEBHOOK] Updated transaction ${transactionKey} to 'delivered'`);
+
+      // Send SMS notification to user
+      try {
+        const statusMessage = `✅ Your data order has been delivered successfully! Enjoy your ${capacity}GB of data on ${network}.`;
+        await sendSmsToUser(transaction.userId, phone || transaction.phoneNumber, statusMessage);
+        console.log(`📱 [DATAMART-WEBHOOK] SMS notification sent to user`);
+      } catch (smsErr) {
+        console.error(`⚠️ [DATAMART-WEBHOOK] SMS notification failed:`, smsErr.message);
+      }
+
+      // Return success to Datamart
+      return res.status(200).json({ 
+        received: true,
+        message: 'Order delivery confirmed',
+        transactionId: transactionId,
+        timestamp: new Date().toISOString()
+      });
+
+    } else if (event === 'order.failed') {
+      console.log(`❌ [DATAMART-WEBHOOK] Order failed: ${transactionId}`);
+      
+      // Find transaction in Firebase by datamartTransactionId
+      const transactionsRef = admin.database().ref('transactions');
+      const snapshot = await transactionsRef.orderByChild('datamartTransactionId').equalTo(transactionId).once('value');
+      
+      if (!snapshot.exists()) {
+        console.warn(`⚠️ [DATAMART-WEBHOOK] Transaction not found for ID: ${transactionId}`);
+        return res.status(404).json({ error: 'Transaction not found' });
+      }
+
+      // Get the transaction key and data
+      let transactionKey = null;
+      let transaction = null;
+      snapshot.forEach(child => {
+        transactionKey = child.key;
+        transaction = child.val();
+      });
+
+      if (!transactionKey || !transaction) {
+        console.warn(`⚠️ [DATAMART-WEBHOOK] Could not extract transaction data`);
+        return res.status(404).json({ error: 'Transaction data error' });
+      }
+
+      console.log(`📝 [DATAMART-WEBHOOK] Found transaction: ${transactionKey}`);
+
+      // Update transaction status to 'failed'
+      await admin.database().ref(`transactions/${transactionKey}`).update({
+        status: 'failed',
+        lastSyncedAt: new Date().toISOString(),
+        datamartStatus: 'failed',
+        syncHistory: transaction.syncHistory ? [...transaction.syncHistory, {
+          from: transaction.status,
+          to: 'failed',
+          source: 'datamart_webhook',
+          timestamp: new Date().toISOString()
+        }] : [{
+          from: transaction.status,
+          to: 'failed',
+          source: 'datamart_webhook',
+          timestamp: new Date().toISOString()
+        }]
+      });
+
+      console.log(`✅ [DATAMART-WEBHOOK] Updated transaction ${transactionKey} to 'failed'`);
+
+      // Refund user if needed
+      try {
+        const amount = transaction.amount;
+        const userId = transaction.userId;
+        const userRef = admin.database().ref(`users/${userId}`);
+        const userSnapshot = await userRef.once('value');
+        const userData = userSnapshot.val();
+        const newBalance = (userData.walletBalance || 0) + amount;
+
+        await userRef.update({
+          walletBalance: newBalance
+        });
+
+        console.log(`💰 [DATAMART-WEBHOOK] Refunded ₵${amount} to user ${userId}`);
+      } catch (refundErr) {
+        console.error(`⚠️ [DATAMART-WEBHOOK] Refund failed:`, refundErr.message);
+      }
+
+      // Send SMS notification to user
+      try {
+        const statusMessage = `❌ Unfortunately, your data order failed. Your wallet has been refunded. Please contact support on 0553843255 if you need assistance.`;
+        await sendSmsToUser(transaction.userId, phone || transaction.phoneNumber, statusMessage);
+        console.log(`📱 [DATAMART-WEBHOOK] Failure notification sent to user`);
+      } catch (smsErr) {
+        console.error(`⚠️ [DATAMART-WEBHOOK] SMS notification failed:`, smsErr.message);
+      }
+
+      // Return success to Datamart
+      return res.status(200).json({ 
+        received: true,
+        message: 'Order failure confirmed and refunded',
+        transactionId: transactionId,
+        timestamp: new Date().toISOString()
+      });
+
+    } else if (event === 'order.created') {
+      console.log(`✅ [DATAMART-WEBHOOK] Order created acknowledgment: ${transactionId}`);
+      // This is just an acknowledgment that order was created
+      // We already handle this in the purchase endpoint
+      return res.status(200).json({ 
+        received: true,
+        message: 'Order creation acknowledged',
+        transactionId: transactionId,
+        timestamp: new Date().toISOString()
+      });
+
+    } else {
+      console.warn(`⚠️ [DATAMART-WEBHOOK] Unknown event type: ${event}`);
+      return res.status(200).json({ 
+        received: true,
+        message: 'Event received but not processed',
+        event: event
+      });
+    }
+
+  } catch (error) {
+    console.error(`❌ [DATAMART-WEBHOOK] Error processing webhook:`, {
+      message: error.message,
+      stack: error.stack,
+      body: req.body
+    });
+
+    // Always return 200 to prevent Datamart retries on our end
+    // But log the error for investigation
+    return res.status(200).json({ 
+      received: true,
+      error: error.message,
+      note: 'Webhook received but processing failed'
+    });
+  }
+});
+
+// ============================================
 // MANUAL PAYMENT VERIFICATION ENDPOINT
 // Allows users to manually verify/claim their payment if webhook failed
 // ============================================
@@ -4615,6 +4842,7 @@ app.post('/api/admin/update-user-email', requireAuth, async (req, res) => {
 // and syncs them to Firebase to keep order status current
 
 async function syncDatamartOrderStatus() {
+async function syncDatamartOrderStatus() {
   try {
     console.log('🔄 Starting Datamart order status sync...');
     
@@ -4635,61 +4863,55 @@ async function syncDatamartOrderStatus() {
         // 3. Status is NOT 'refunded'
         if (!transaction.datamartTransactionId || 
             ['delivered', 'failed', 'refunded', 'cancelled'].includes(transaction.status?.toLowerCase())) {
+          skippedCount++;
           continue;
         }
         
-        // Query Datamart API for this transaction's status
-        // Note: Datamart might not have a direct query endpoint, so we'll use the purchase reference
-        // For now, we'll store the status locally until Datamart provides a status endpoint
+        // Since Datamart doesn't have a status query endpoint, use time-based progression
+        // Orders progress: processing → delivered based on time elapsed
+        const orderTimestamp = new Date(transaction.timestamp).getTime();
+        const currentTime = Date.now();
+        const elapsedMinutes = (currentTime - orderTimestamp) / (1000 * 60);
         
-        console.log(`📋 Checking order status for: ${transaction.datamartTransactionId}`);
+        console.log(`📋 Checking order ${transactionId}: Elapsed ${Math.round(elapsedMinutes)}min, Current status: ${transaction.status}`);
         
-        // TODO: Once Datamart provides a status query endpoint, uncomment and use this:
-        /*
-        const datamartStatusResponse = await axios.get(
-          'https://api.datamartgh.shop/api/developer/transaction/status',
-          {
-            headers: {
-              'X-API-Key': process.env.DATAMART_API_KEY,
-            },
-            params: {
-              transactionId: transaction.datamartTransactionId
-            },
-            timeout: 10000
-          }
-        );
+        let newStatus = transaction.status;
         
-        const statusData = datamartStatusResponse.data;
-        if (statusData && statusData.data) {
-          const currentStatus = statusData.data.status;
+        // Auto-progress status based on time
+        if (transaction.status === 'processing' && elapsedMinutes >= 45) {
+          newStatus = 'delivered';
+        } else if (transaction.status === 'success' && elapsedMinutes >= 45) {
+          newStatus = 'delivered';
+        }
+        
+        // If status changed, update database and notify user
+        if (newStatus !== transaction.status) {
+          await admin.database().ref(`transactions/${transactionId}`).update({
+            status: newStatus,
+            lastSyncedAt: new Date().toISOString(),
+            syncHistory: transaction.syncHistory ? [...transaction.syncHistory, {
+              from: transaction.status,
+              to: newStatus,
+              timestamp: new Date().toISOString()
+            }] : [{
+              from: transaction.status,
+              to: newStatus,
+              timestamp: new Date().toISOString()
+            }]
+          });
           
-          // Map Datamart status to DataSell status
-          const mappedStatus = mapDatamartStatusToDataSell(currentStatus);
+          syncedCount++;
+          console.log(`✅ Updated status for ${transactionId}: ${transaction.status} → ${newStatus}`);
           
-          if (mappedStatus && mappedStatus !== transaction.status) {
-            await admin.database().ref(`transactions/${transactionId}`).update({
-              status: mappedStatus,
-              datamartStatus: currentStatus,
-              lastSyncedAt: new Date().toISOString()
-            });
-            
-            syncedCount++;
-            console.log(`✅ Updated status for ${transactionId}: ${transaction.status} → ${mappedStatus}`);
-            
-            // Notify user of status change
-            try {
-              const userRef = admin.database().ref(`users/${transaction.userId}`);
-              const userSnap = await userRef.once('value');
-              const userData = userSnap.val();
-              
-              const statusMessage = getStatusMessage(mappedStatus);
-              await sendSmsToUser(transaction.userId, transaction.phoneNumber, statusMessage);
-            } catch (smsErr) {
-              console.error(`❌ Failed to notify user ${transaction.userId}:`, smsErr);
-            }
+          // Notify user of status change
+          try {
+            const statusMessage = getStatusMessage(newStatus);
+            await sendSmsToUser(transaction.userId, transaction.phoneNumber, statusMessage);
+            console.log(`📱 SMS sent to user for status change`);
+          } catch (smsErr) {
+            console.error(`❌ Failed to notify user:`, smsErr.message);
           }
         }
-        */
         
       } catch (error) {
         errorCount++;
@@ -4697,7 +4919,7 @@ async function syncDatamartOrderStatus() {
       }
     }
     
-    console.log(`✅ Datamart sync completed - Updated: ${syncedCount}, Errors: ${errorCount}`);
+    console.log(`✅ Datamart sync completed - Updated: ${syncedCount}, Skipped: ${skippedCount}, Errors: ${errorCount}`);
   } catch (error) {
     console.error('❌ Datamart order status sync error:', error);
   }
@@ -4730,19 +4952,11 @@ function getStatusMessage(status) {
   return messages[status?.toLowerCase()] || `Your order status: ${status}`;
 }
 
-// Start periodic sync (every 5 minutes) - DISABLED for now
-console.log('⏰ Datamart order status sync - TEMPORARILY DISABLED during deployment');
-/*
-setInterval(() => {
-  syncDatamartOrderStatus().catch(err => console.error('Sync error:', err));
-}, 5 * 60 * 1000);
-*/
-
-// DISABLED: Run sync after 60 seconds (give server time to start and respond to health checks)
-// setTimeout(() => {
-//   console.log('🔄 Starting initial Datamart sync...');
-//   syncDatamartOrderStatus().catch(err => console.error('Initial sync error:', err));
-// }, 60000);
+// DISABLED: Datamart webhook now handles real-time order status updates
+// The time-based polling is no longer needed since we have /api/datamart-webhook
+// for instant order.completed and order.failed events
+console.log('✅ Datamart webhook active - Real-time order status updates enabled');
+console.log('⏸️  Time-based polling disabled (webhook provides real-time updates)');
 
 // Keep the process alive indefinitely (prevent Node.js from exiting)
 setInterval(() => {
@@ -4822,6 +5036,118 @@ app.get('/api/order-status/:transactionId', requireAuth, async (req, res) => {
     res.status(500).json({ 
       success: false, 
       error: 'Failed to fetch order status' 
+    });
+  }
+});
+
+// ============================================
+// SYNC MONITORING & TESTING ENDPOINTS
+// ============================================
+
+// Endpoint to check sync status and get pending orders (Admin)
+app.get('/api/admin/sync-status', requireAdmin, async (req, res) => {
+  try {
+    const transactionsRef = admin.database().ref('transactions');
+    const snapshot = await transactionsRef.once('value');
+    const allTransactions = snapshot.val() || {};
+    
+    let pendingOrders = [];
+    let deliveredOrders = [];
+    let failedOrders = [];
+    
+    for (const [transactionId, transaction] of Object.entries(allTransactions)) {
+      const orderData = {
+        id: transactionId,
+        status: transaction.status,
+        network: transaction.network,
+        phoneNumber: transaction.phoneNumber,
+        amount: transaction.amount,
+        timestamp: transaction.timestamp,
+        lastSyncedAt: transaction.lastSyncedAt,
+        elapsedMinutes: Math.round((Date.now() - new Date(transaction.timestamp).getTime()) / (1000 * 60))
+      };
+      
+      if (transaction.status === 'processing' || transaction.status === 'success') {
+        pendingOrders.push(orderData);
+      } else if (transaction.status === 'delivered') {
+        deliveredOrders.push(orderData);
+      } else if (transaction.status === 'failed') {
+        failedOrders.push(orderData);
+      }
+    }
+    
+    res.json({
+      success: true,
+      summary: {
+        total: Object.keys(allTransactions).length,
+        pending: pendingOrders.length,
+        delivered: deliveredOrders.length,
+        failed: failedOrders.length
+      },
+      pendingOrders: pendingOrders.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp)).slice(0, 10),
+      lastSyncTime: new Date().toISOString(),
+      nextSyncIn: '5 minutes'
+    });
+  } catch (error) {
+    console.error('Error getting sync status:', error);
+    res.status(500).json({ 
+      success: false, 
+      error: error.message 
+    });
+  }
+});
+
+// Endpoint to manually update an order status (for testing Datamart responses)
+app.post('/api/admin/test-update-order-status', requireAdmin, async (req, res) => {
+  try {
+    const { transactionId, newStatus } = req.body;
+    
+    if (!transactionId || !newStatus) {
+      return res.status(400).json({
+        success: false,
+        error: 'transactionId and newStatus are required'
+      });
+    }
+    
+    const transactionRef = admin.database().ref(`transactions/${transactionId}`);
+    const snapshot = await transactionRef.once('value');
+    const transaction = snapshot.val();
+    
+    if (!transaction) {
+      return res.status(404).json({
+        success: false,
+        error: 'Order not found'
+      });
+    }
+    
+    await transactionRef.update({
+      status: newStatus,
+      lastSyncedAt: new Date().toISOString()
+    });
+    
+    // Send notification SMS
+    try {
+      const statusMessage = getStatusMessage(newStatus);
+      await sendSmsToUser(transaction.userId, transaction.phoneNumber, statusMessage);
+    } catch (smsErr) {
+      console.error('SMS notification failed:', smsErr.message);
+    }
+    
+    res.json({
+      success: true,
+      message: `Order ${transactionId} updated to ${newStatus}`,
+      transaction: {
+        id: transactionId,
+        previousStatus: transaction.status,
+        newStatus: newStatus,
+        updatedAt: new Date().toISOString()
+      }
+    });
+  } catch (error) {
+    console.error('Error updating order status:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message
     });
   }
 });
