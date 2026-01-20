@@ -1339,12 +1339,13 @@
                                     <th>Balance</th>
                                     <th>Status</th>
                                     <th>Role</th>
+                                    <th>Pricing Tier</th>
                                     <th>Actions</th>
                                 </tr>
                             </thead>
                             <tbody id="usersTableBody">
                                 <tr>
-                                    <td colspan="8" class="text-center">Loading users...</td>
+                                    <td colspan="9" class="text-center">Loading users...</td>
                                 </tr>
                             </tbody>
                         </table>
@@ -1440,8 +1441,6 @@
                                     <th>Phone</th>
                                     <th>Amount</th>
                                     <th>Status</th>
-                                    <th>Delivered</th>
-                                    <th>Toggle</th>
                                     <th>Date</th>
                                     <th>Actions</th>
                                 </tr>
@@ -1511,10 +1510,6 @@
             <!-- System Monitoring Tab -->
             <div class="tab-content" id="system-tab">
                 <div class="stats-grid">
-                    <div class="stat-card">
-                        <div class="stat-value" id="datamartStatus">Checking...</div>
-                        <div class="stat-label">DataMart Status</div>
-                    </div>
                     <div class="stat-card">
                         <div class="stat-value" id="paystackStatus">Checking...</div>
                         <div class="stat-label">Paystack Status</div>
@@ -1783,13 +1778,18 @@ async function loadUsers() {
 
 function displayUsers(users) {
   if (!users || users.length === 0) {
-    document.getElementById('usersTableBody').innerHTML = '<tr><td colspan="8">No users found</td></tr>';
+    document.getElementById('usersTableBody').innerHTML = '<tr><td colspan="9">No users found</td></tr>';
     return;
   }
   
   const tbody = document.getElementById('usersTableBody');
   if (tbody) {
-    tbody.innerHTML = users.map(user => `
+    tbody.innerHTML = users.map(user => {
+      const tierName = (user.pricingGroup || 'regular').toUpperCase();
+      const tierColor = user.pricingGroup === 'vip' ? '#ef4444' : user.pricingGroup === 'premium' ? '#f59e0b' : '#6b7280';
+      const tierDisplay = user.pricingGroup === 'vip' ? 'VIP (10%)' : user.pricingGroup === 'premium' ? 'Premium (5%)' : 'Regular (0%)';
+      
+      return `
       <tr>
         <td>${user.uid.substring(0, 8)}...</td>
         <td>${(user.firstName || '') + ' ' + (user.lastName || '')}</td>
@@ -1799,11 +1799,17 @@ function displayUsers(users) {
         <td><span style="color: ${user.status === 'suspended' ? '#ef4444' : '#10b981'}">${user.status || 'active'}</span></td>
         <td>${user.role === 'admin' ? 'Admin' : 'User'}</td>
         <td>
-          <button onclick="editUser('${user.uid}')" style="padding: 4px 8px; margin-right: 4px; background: #3b82f6; color: white; border: none; border-radius: 4px; cursor: pointer;">Edit</button>
-          <button onclick="manageUserFunds('${user.uid}')" style="padding: 4px 8px; background: #10b981; color: white; border: none; border-radius: 4px; cursor: pointer;">Funds</button>
+          <span style="background: ${tierColor}; color: white; padding: 4px 8px; border-radius: 4px; font-size: 12px; font-weight: 600;">
+            ${tierDisplay}
+          </span>
+        </td>
+        <td>
+          <button onclick="editUser('${user.uid}')" style="padding: 4px 8px; margin-right: 4px; background: #3b82f6; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 12px;">Edit</button>
+          <button onclick="setPricingTier('${user.uid}')" style="padding: 4px 8px; margin-right: 4px; background: #8b5cf6; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 12px;">Tier</button>
+          <button onclick="manageUserFunds('${user.uid}')" style="padding: 4px 8px; background: #10b981; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 12px;">Funds</button>
         </td>
       </tr>
-    `).join('');
+    `}).join('');
   }
 }
 
@@ -1857,10 +1863,6 @@ async function loadSystemStatus() {
       const status = data.systemStatus;
       const html = `
         <div style="padding: 12px 0;">
-          <div style="display: flex; justify-content: space-between; margin-bottom: 12px; padding-bottom: 12px; border-bottom: 1px solid #e5e7eb;">
-            <span>Datamart Status:</span>
-            <span style="color: ${status.datamart?.status === 'online' ? '#10b981' : '#ef4444'}; font-weight: 600;">${status.datamart?.status || 'offline'}</span>
-          </div>
           <div style="display: flex; justify-content: space-between; margin-bottom: 12px; padding-bottom: 12px; border-bottom: 1px solid #e5e7eb;">
             <span>Paystack Status:</span>
             <span style="color: ${status.paystack?.status === 'online' ? '#10b981' : '#ef4444'}; font-weight: 600;">${status.paystack?.status || 'offline'}</span>
@@ -1941,6 +1943,63 @@ function editUser(userId) {
 function manageUserFunds(userId) {
   console.log('Manage funds for user:', userId);
   Swal.fire('Info', 'Manage funds feature coming soon', 'info');
+}
+
+// Set User Pricing Tier
+async function setPricingTier(userId) {
+  const user = allUsersData.find(u => u.uid === userId);
+  if (!user) {
+    Swal.fire('Error', 'User not found', 'error');
+    return;
+  }
+
+  const currentTier = user.pricingGroup || 'regular';
+  
+  const { value: selectedTier } = await Swal.fire({
+    title: `Set Pricing Tier for ${(user.firstName || '') + ' ' + (user.lastName || '')}`,
+    input: 'select',
+    inputOptions: {
+      'regular': 'Regular (0% Discount)',
+      'premium': 'Premium (5% Discount)',
+      'vip': 'VIP (10% Discount)'
+    },
+    inputValue: currentTier,
+    showCancelButton: true,
+    confirmButtonText: 'Update Tier',
+    preConfirm: (value) => {
+      if (!value) {
+        Swal.showValidationMessage('Please select a tier');
+        return false;
+      }
+      return value;
+    }
+  });
+
+  if (!selectedTier) return;
+
+  try {
+    const response = await fetch(`/api/admin/users/${userId}/set-tier`, {
+      method: 'POST',
+      credentials: 'include',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({ tier: selectedTier })
+    });
+
+    const result = await response.json();
+
+    if (result.success) {
+      Swal.fire('Success', result.message, 'success');
+      // Reload users to show updated tier
+      loadUsers();
+    } else {
+      Swal.fire('Error', result.error || 'Failed to update tier', 'error');
+    }
+  } catch (error) {
+    console.error('Error updating tier:', error);
+    Swal.fire('Error', 'Failed to update tier', 'error');
+  }
 }
 
 // Initialize on page load
@@ -2603,7 +2662,10 @@ async function loadTransactions() {
     
     if (data.success && data.transactions) {
       const tbody = document.getElementById('transactionsTableBody');
-      tbody.innerHTML = data.transactions.map(t => `
+      tbody.innerHTML = data.transactions.map(t => {
+        // Determine Datamart status color - ONLY show actual Datamart status, not fallback
+        let datamartStatusColor = '#6b7280'; // default gray
+        return `
         <tr>
           <td><code>${(t.reference || 'N/A').substring(0, 8)}</code></td>
           <td>${t.userName || 'N/A'}</td>
@@ -2612,43 +2674,16 @@ async function loadTransactions() {
           <td>${t.phoneNumber || t.phone || 'N/A'}</td>
           <td>₵${parseFloat(t.amount || 0).toFixed(2)}</td>
           <td><span style="color: ${t.status === 'success' ? '#10b981' : t.status === 'failed' ? '#ef4444' : '#f59e0b'}">${t.status || 'unknown'}</span></td>
-          <td>${t.delivered ? 'Yes' : 'No'}</td>
-          <td><input type="checkbox" ${t.delivered ? 'checked' : ''} onchange="toggleDeliveryStatus('${t.id}')"></td>
           <td>${new Date(t.timestamp).toLocaleDateString()}</td>
           <td><button class="btn btn-sm" onclick="viewTransactionDetails('${t.id}')">Details</button></td>
         </tr>
-      `).join('');
+      `}).join('');
     } else {
-      document.getElementById('transactionsTableBody').innerHTML = '<tr><td colspan="11" class="text-center">No transactions found</td></tr>';
+      document.getElementById('transactionsTableBody').innerHTML = '<tr><td colspan="10" class="text-center">No transactions found</td></tr>';
     }
   } catch (error) {
     console.error('Error loading transactions:', error);
-    document.getElementById('transactionsTableBody').innerHTML = '<tr><td colspan="11" class="text-center" style="color: #ef4444;">Failed to load transactions</td></tr>';
-  }
-}
-
-// Toggle transaction delivery status
-async function toggleDeliveryStatus(transactionId) {
-  try {
-    const response = await fetch(`/api/admin/transactions/${transactionId}/toggle-delivery`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json'
-      },
-      credentials: 'include'
-    });
-
-    const result = await response.json();
-
-    if (result.success) {
-      Swal.fire('Success', result.message, 'success');
-      loadTransactions();
-    } else {
-      Swal.fire('Error', result.error || 'Failed to update delivery status', 'error');
-    }
-  } catch (error) {
-    console.error('Error toggling delivery:', error);
-    Swal.fire('Error', 'Failed to update delivery status', 'error');
+    document.getElementById('transactionsTableBody').innerHTML = '<tr><td colspan="10" class="text-center" style="color: #ef4444;">Failed to load transactions</td></tr>';
   }
 }
 

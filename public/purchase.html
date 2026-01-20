@@ -938,6 +938,8 @@
 
         let currentUser = null;
         let userBalance = 0;
+        let userTier = 'regular';
+        let userDiscount = 0;
         let selectedNetwork = null;
         let selectedPackage = null;
         let selectedPaymentMethod = 'wallet';
@@ -958,6 +960,17 @@
                 
                 if (userResult.success && userResult.user) {
                     currentUser = userResult.user;
+                    // Get user's pricing tier
+                    userTier = currentUser.pricingGroup || 'regular';
+                    // Calculate discount based on tier
+                    if (userTier === 'vip') {
+                        userDiscount = 10;
+                    } else if (userTier === 'premium') {
+                        userDiscount = 5;
+                    } else {
+                        userDiscount = 0;
+                    }
+                    console.log(`💳 User tier: ${userTier}, Discount: ${userDiscount}%`);
                     await loadWalletBalance();
                     
                     await initializeNetwork();
@@ -1111,9 +1124,18 @@
                 return;
             }
 
+            // Calculate discounted price if user has a tier
+            let displayPrice = price;
+            let priceLabel = `₵${price.toFixed(2)}`;
+            
+            if (userDiscount > 0) {
+                displayPrice = price - (price * userDiscount / 100);
+                priceLabel = `₵${displayPrice.toFixed(2)} (${userDiscount}% Discount)`;
+            }
+
             // Update preview
             document.getElementById('previewPackage').textContent = packageName;
-            document.getElementById('previewPrice').textContent = `₵${price.toFixed(2)}`;
+            document.getElementById('previewPrice').textContent = priceLabel;
 
             // Reset phone input
             document.getElementById('modalPhoneNumber').value = '';
@@ -1159,8 +1181,14 @@
             const confirmBtnText = document.getElementById('confirmBtnText');
             const confirmBtnLoading = document.getElementById('confirmBtnLoading');
 
-            // Check balance
-            if (userBalance < selectedPackage.price) {
+            // Calculate final price with discount
+            let finalPrice = selectedPackage.price;
+            if (userDiscount > 0) {
+                finalPrice = selectedPackage.price - (selectedPackage.price * userDiscount / 100);
+            }
+
+            // Check balance against final price (with discount applied)
+            if (userBalance < finalPrice) {
                 notyf.error('Insufficient balance. Please fund your wallet.');
                 phoneModal.hide();
                 window.location.href = '/wallet';
@@ -1181,6 +1209,9 @@
                         volume = volumeMatch[0];
                     }
                 }
+
+                // Send original amount, backend will apply discount server-side
+                console.log(`💳 Purchase request - Original: ₵${selectedPackage.price.toFixed(2)}, User will pay: ₵${finalPrice.toFixed(2)} (${userDiscount}% discount)`);
 
                 const response = await fetch('/api/purchase-data', {
                     credentials: 'include',
@@ -1209,6 +1240,14 @@
                     // Close phone modal
                     phoneModal.hide();
                     
+                    // Calculate final price with discount for display
+                    let displayPrice = selectedPackage.price;
+                    let discountInfo = '';
+                    if (result.pricingInfo && result.pricingInfo.discountPercent > 0) {
+                        displayPrice = result.pricingInfo.paidAmount;
+                        discountInfo = ` (${result.pricingInfo.discountPercent}% Discount)`;
+                    }
+                    
                     // Show success modal with order details
                     showResultModal({
                         status: 'success',
@@ -1216,7 +1255,8 @@
                         reference: result.reference || result.ref || result.transactionReference,
                         phoneNumber: phoneNumber,
                         packageName: selectedPackage.name,
-                        packagePrice: selectedPackage.price,
+                        packagePrice: displayPrice,
+                        discountInfo: discountInfo,
                         network: selectedNetwork,
                         userPhone: currentUser && currentUser.phoneNumber ? currentUser.phoneNumber : ''
                     });
@@ -1262,7 +1302,10 @@
             // Update numbers and package info if present
             if (document.getElementById('successUserNumber')) document.getElementById('successUserNumber').textContent = formatPhoneDisplay(data.userPhone);
             if (document.getElementById('successReceiverNumber')) document.getElementById('successReceiverNumber').textContent = formatPhoneDisplay(data.phoneNumber);
-            if (document.getElementById('successPackage')) document.getElementById('successPackage').textContent = data.packageName ? `${data.packageName} - ₵${(data.packagePrice||0).toFixed(2)}` : (data.packageName || '');
+            if (document.getElementById('successPackage')) {
+                const displayText = data.packageName ? `${data.packageName} - ₵${(data.packagePrice||0).toFixed(2)}${data.discountInfo || ''}` : (data.packageName || '');
+                document.getElementById('successPackage').textContent = displayText;
+            }
             if (document.getElementById('successNetwork')) document.getElementById('successNetwork').textContent = `${networkLabel} Network`;
             if (document.getElementById('successOrderId')) document.getElementById('successOrderId').textContent = data.orderId ? `#${data.orderId}` : '';
 

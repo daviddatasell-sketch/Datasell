@@ -478,8 +478,8 @@ app.use((req, res, next) => {
     const inactiveMs = now - lastActivity;
     const inactiveMinutes = inactiveMs / (1000 * 60);
     
-    // 30 minutes timeout
-    if (inactiveMinutes > 30) {
+    // 24 hours timeout
+    if (inactiveMinutes > 1440) {
       console.log(`⏰ Session timeout for user ${req.session.user.uid} after ${Math.floor(inactiveMinutes)} minutes of inactivity`);
       // Destroy session and redirect to login
       req.session.destroy((err) => {
@@ -996,6 +996,9 @@ app.post('/api/login', async (req, res) => {
         displayName: adminUser?.displayName || adminUser?.firstName + ' ' + adminUser?.lastName || 'Administrator',
         isAdmin: true
       };
+      
+      // Initialize activity tracker for session timeout
+      req.session.lastActivity = Date.now();
 
       console.log('✅ Admin session set:', { uid: req.session.user.uid, isAdmin: req.session.user.isAdmin, sessionID: req.sessionID });
 
@@ -1090,6 +1093,9 @@ app.post('/api/login', async (req, res) => {
       displayName: foundUser.displayName || `${foundUser.firstName || ''} ${foundUser.lastName || ''}`.trim(),
       isAdmin: foundUser.isAdmin || false
     };
+    
+    // Initialize activity tracker for session timeout
+    req.session.lastActivity = Date.now();
 
     // Respect 'remember me' for regular user sessions
     try {
@@ -1436,7 +1442,8 @@ app.get('/api/user', requireAuth, async (req, res) => {
       firstName: userData.firstName || null,
       lastName: userData.lastName || null,
       displayName: userData.firstName && userData.lastName ? `${userData.firstName} ${userData.lastName}` : userData.displayName || userData.email || 'User',
-      isAdmin: req.session.user.isAdmin || userData.isAdmin || false
+      isAdmin: req.session.user.isAdmin || userData.isAdmin || false,
+      pricingGroup: userData.pricingGroup || 'regular'
     });
 
     console.log('✅ User data response:', { uid: user.uid, email: user.email, isAdmin: user.isAdmin });
@@ -3092,6 +3099,24 @@ app.post('/api/datamart-webhook', async (req, res) => {
 
     } else if (event === 'order.created') {
       console.log(`✅ [DATAMART-WEBHOOK] Order created: ${transactionId}`);
+      
+      const transactionsRef = admin.database().ref('transactions');
+      const snapshot = await transactionsRef.orderByChild('datamartTransactionId').equalTo(transactionId).once('value');
+      
+      if (snapshot.exists()) {
+        let transactionKey = null;
+        snapshot.forEach(child => {
+          transactionKey = child.key;
+        });
+        
+        // Mark as pending/processing when created
+        await admin.database().ref(`transactions/${transactionKey}`).update({
+          lastSyncedAt: new Date().toISOString(),
+          datamartStatus: 'pending'
+        });
+        console.log(`✅ [DATAMART-WEBHOOK] Updated ${transactionKey} status to pending`);
+      }
+      
       return res.status(200).json({ received: true, transactionId, timestamp: new Date().toISOString() });
 
     } else {
@@ -3498,10 +3523,25 @@ app.post('/api/purchase-data', requireAuth, async (req, res) => {
       });
     }
 
-    if (userData.walletBalance < amount) {
+    // Get user tier and calculate discount
+    const userTier = userData.pricingGroup || 'regular';
+    const tierDiscounts = {
+      'regular': 0,
+      'premium': 5,
+      'vip': 10
+    };
+    const discountPercent = tierDiscounts[userTier] || 0;
+    const discountAmount = (amount * discountPercent) / 100;
+    const finalAmount = amount - discountAmount;
+    
+    console.log(`💳 [PRICING] User tier: ${userTier}, Discount: ${discountPercent}%, Original: ₵${amount}, Discount: ₵${discountAmount.toFixed(2)}, Final: ₵${finalAmount.toFixed(2)}`);
+
+    if (userData.walletBalance < finalAmount) {
       return res.status(400).json({ 
         success: false, 
-        error: 'Insufficient wallet balance' 
+        error: 'Insufficient wallet balance',
+        required: finalAmount.toFixed(2),
+        available: userData.walletBalance.toFixed(2)
       });
     }
 
@@ -3517,8 +3557,13 @@ app.post('/api/purchase-data', requireAuth, async (req, res) => {
       packageName,
       volume: volumeValue,
       phoneNumber,
-      amount,
+      amount: finalAmount,
+      originalAmount: amount,
+      discountPercent: discountPercent,
+      discountAmount: discountAmount,
+      userTier: userTier,
       status: 'processing',
+      datamartStatus: 'processing',
       reference: reference,
       transactionId: null,
       datamartTransactionId: null,
@@ -3574,8 +3619,8 @@ app.post('/api/purchase-data', requireAuth, async (req, res) => {
 
     // Handle DataMart response structure
     if (datamartData.status === 'success' && datamartData.data) {
-      // SUCCESS: Deduct balance and update order
-      const newBalance = userData.walletBalance - amount;
+      // SUCCESS: Deduct balance (using discounted amount) and update order
+      const newBalance = userData.walletBalance - finalAmount;
       await userRef.update({ walletBalance: newBalance });
 
       const purchaseData = datamartData.data;
@@ -3589,7 +3634,10 @@ app.post('/api/purchase-data', requireAuth, async (req, res) => {
       console.log('✅ Purchase successful, order updated to success:', {
         reference: reference,
         transactionId: purchaseData.purchaseId || purchaseData.transactionReference,
-        newBalance: newBalance
+        newBalance: newBalance,
+        originalAmount: amount,
+        discountApplied: discountAmount.toFixed(2),
+        paidAmount: finalAmount.toFixed(2)
       });
 
       res.json({ 
@@ -3597,7 +3645,14 @@ app.post('/api/purchase-data', requireAuth, async (req, res) => {
         data: purchaseData,
         newBalance: newBalance,
         reference: reference,
-        message: 'Data purchase successful!'
+        message: 'Data purchase successful!',
+        pricingInfo: {
+          userTier: userTier,
+          originalPrice: amount,
+          discountPercent: discountPercent,
+          discountAmount: discountAmount.toFixed(2),
+          paidAmount: finalAmount.toFixed(2)
+        }
       });
     } else {
       // FAILURE: Update order status but DON'T deduct balance
@@ -4468,6 +4523,64 @@ app.post('/api/admin/users/:uid/deduct-funds', requireAdmin, async (req, res) =>
     res.json({ success: true, message: `₵${amount} deducted from user wallet` });
   } catch (error) {
     console.error('Deduct funds error:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// Toggle User Pricing Tier (Regular/Premium/VIP)
+app.post('/api/admin/users/:uid/set-tier', requireAdmin, async (req, res) => {
+  try {
+    const { uid } = req.params;
+    const { tier } = req.body;
+
+    // Define available tiers with their discounts
+    const tiers = {
+      'regular': { discount: 0, displayName: 'Regular' },
+      'premium': { discount: 5, displayName: 'Premium (5% Discount)' },
+      'vip': { discount: 10, displayName: 'VIP (10% Discount)' }
+    };
+
+    if (!tier || !tiers[tier]) {
+      return res.status(400).json({ 
+        success: false, 
+        error: 'Invalid tier. Must be: regular, premium, or vip' 
+      });
+    }
+
+    const userSnapshot = await admin.database().ref(`users/${uid}`).once('value');
+    const user = userSnapshot.val();
+
+    if (!user) {
+      return res.status(404).json({ success: false, error: 'User not found' });
+    }
+
+    const oldTier = user.pricingGroup || 'regular';
+    const tierInfo = tiers[tier];
+
+    // Update user tier
+    await admin.database().ref(`users/${uid}`).update({
+      pricingGroup: tier,
+      pricingTierUpdatedAt: new Date().toISOString(),
+      pricingTierDiscount: tierInfo.discount
+    });
+
+    // Log admin action
+    await admin.database().ref('adminLogs').push({
+      adminId: req.session.user?.uid || 'system',
+      action: 'set_user_tier',
+      details: `Changed user ${uid.substring(0, 8)}... tier from "${oldTier}" to "${tier}" (${tierInfo.discount}% discount)`,
+      timestamp: new Date().toISOString(),
+      ip: req.ip
+    });
+
+    res.json({ 
+      success: true, 
+      message: `User tier updated to ${tierInfo.displayName}`,
+      tier: tier,
+      discount: tierInfo.discount
+    });
+  } catch (error) {
+    console.error('Set tier error:', error);
     res.status(500).json({ success: false, error: error.message });
   }
 });
