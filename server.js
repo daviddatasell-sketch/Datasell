@@ -505,7 +505,7 @@ app.use((req, res, next) => {
   const origin = req.get('origin');
   
   // Skip domain check for health endpoints, webhooks and lightweight config
-  if (req.path === '/api/health' || req.path === '/api/ping' || req.path === '/api/hubnet-webhook' || req.path === '/api/datamart-webhook' || req.path === '/config.js') {
+  if (req.path === '/api/health' || req.path === '/api/ping' || req.path === '/api/paystack/webhook' || req.path === '/api/hubnet-webhook' || req.path === '/api/datamart-webhook' || req.path === '/config.js') {
     return next();
   }
   
