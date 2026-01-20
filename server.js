@@ -2560,7 +2560,7 @@ app.get('/payment-confirmation', (req, res) => {
           <p>Your wallet has been credited with</p>
           <div class="amount"><span class="currency">₵</span>${amount.toFixed(2)}</div>
           <p>Your funds are now available to use immediately.</p>
-          <a href="/" class="btn btn-continue">Return to Homepage</a>
+          <a href="/dashboard" class="btn btn-continue">Return to Homepage</a>
           <div class="timer">Redirecting in <span id="countdown">5</span> seconds...</div>
         </div>
         
@@ -2571,7 +2571,7 @@ app.get('/payment-confirmation', (req, res) => {
             document.getElementById('countdown').textContent = count;
             if (count === 0) {
               clearInterval(interval);
-              window.location.href = '/';
+              window.location.href = '/dashboard';
             }
           }, 1000);
         </script>
