@@ -2335,17 +2335,48 @@ app.get('/api/verify-payment/:reference', requireAuth, async (req, res) => {
 });
 
 // Direct payment callback endpoint (server-side verification and redirect)
+// NOTE: This is a fallback for users who complete payment on Paystack
+// The webhook should have already credited their account - we're just confirming it
 app.get('/payment-callback', async (req, res) => {
   try {
     // Paystack sends either 'reference' or 'trxref' parameter
     const reference = req.query.reference || req.query.trxref;
     
     if (!reference) {
-      console.log('❌ No reference found in callback');
+      console.log('❌ [CALLBACK] No reference found in callback');
       return res.redirect('/');
     }
 
-    console.log('💳 Payment callback received for reference:', reference);
+    console.log(`🔄 [CALLBACK] Payment callback received for reference: ${reference}`);
+
+    // STEP 1: Check if payment already exists in our database
+    const paymentsRef = admin.database().ref('payments');
+    const existingPaymentSnapshot = await paymentsRef
+      .orderByChild('reference')
+      .equalTo(reference)
+      .once('value');
+
+    if (existingPaymentSnapshot.exists()) {
+      console.log(`✅ [CALLBACK] Payment already credited via webhook for ref: ${reference}`);
+      const payments = existingPaymentSnapshot.val();
+      const existingPayment = Object.values(payments)[0];
+      
+      // Redirect to confirmation with existing payment info
+      req.session.paymentConfirmation = {
+        amount: existingPayment.amount,
+        userId: existingPayment.userId,
+        reference: reference,
+        timestamp: new Date().toISOString(),
+        source: 'already_credited'
+      };
+      
+      req.session.save(() => {
+        res.redirect('/payment-confirmation');
+      });
+      return;
+    }
+
+    console.log(`🔐 [CALLBACK] Verifying payment with Paystack for ref: ${reference}`);
 
     // Verify payment with Paystack
     const paystackResponse = await axios.get(
@@ -2361,7 +2392,7 @@ app.get('/payment-callback', async (req, res) => {
     const result = paystackResponse.data;
     
     if (result.data.status === 'success') {
-      console.log('✅ Paystack payment verified as successful');
+      console.log(`✅ [CALLBACK] Paystack payment verified as successful for ref: ${reference}`);
       
       // Get metadata
       const metadata = result.data.metadata;
@@ -2369,66 +2400,125 @@ app.get('/payment-callback', async (req, res) => {
       const originalAmount = metadata.originalAmount || (result.data.amount / 100);
       const amount = parseFloat(originalAmount);
       
-      // Credit wallet
+      if (!userId) {
+        console.error(`❌ [CALLBACK] No userId in metadata for ref: ${reference}`);
+        return res.redirect('/payment-confirmation?status=failed');
+      }
+
+      // STEP 2: Double-check that payment hasn't been credited since our last check (race condition)
+      const finalCheckSnapshot = await paymentsRef
+        .orderByChild('reference')
+        .equalTo(reference)
+        .once('value');
+
+      if (finalCheckSnapshot.exists()) {
+        console.log(`✅ [CALLBACK] RACE CONDITION: Payment was credited between our checks for ref: ${reference}`);
+        const finalPayment = Object.values(finalCheckSnapshot.val())[0];
+        req.session.paymentConfirmation = {
+          amount: finalPayment.amount,
+          userId: finalPayment.userId,
+          reference: reference,
+          timestamp: new Date().toISOString(),
+          source: 'race_condition_caught'
+        };
+        req.session.save(() => {
+          res.redirect('/payment-confirmation');
+        });
+        return;
+      }
+
+      // STEP 3: Credit wallet
       const userRef = admin.database().ref('users/' + userId);
       const userSnapshot = await userRef.once('value');
-      const currentBalance = userSnapshot.val().walletBalance || 0;
+      
+      if (!userSnapshot.exists()) {
+        console.error(`❌ [CALLBACK] User not found: ${userId}`);
+        return res.redirect('/payment-confirmation?status=failed');
+      }
+
+      const userData = userSnapshot.val();
+      const currentBalance = userData.walletBalance || 0;
+      const newBalance = currentBalance + amount;
       
       await userRef.update({ 
-        walletBalance: currentBalance + amount 
+        walletBalance: newBalance,
+        lastWalletUpdate: new Date().toISOString(),
+        lastWalletCredit: {
+          amount: amount,
+          reference: reference,
+          timestamp: new Date().toISOString()
+        }
       });
 
-      console.log(`💰 Wallet credited: ${userId} received ₵${amount}`);
+      console.log(`💰 [CALLBACK] Wallet credited: ${userId} received ₵${amount}`);
 
-      // Record payment
+      // STEP 4: Record payment
       const paymentRef = admin.database().ref('payments').push();
       await paymentRef.set({
         userId,
+        userEmail: metadata.email || userData.email,
         amount: amount,
         paystackAmount: result.data.amount / 100,
         fee: (result.data.amount / 100) - amount,
         reference,
         status: 'success',
-        paystackData: result.data,
+        source: 'callback',
+        paystackData: {
+          status: result.data.status,
+          authorization: result.data.authorization || {},
+          customer: result.data.customer || {},
+          created_at: result.data.created_at,
+          paid_at: result.data.paid_at
+        },
         timestamp: new Date().toISOString()
       });
 
-      // Send SMS notification
-      try {
-        const userData = userSnapshot.val() || {};
-        const username = userData.displayName || userData.username || userData.name || userData.email || 'Customer';
-        const phoneFallback = userData.phone || userData.phoneNumber || '';
-        const message = `hello ${username} your DataSell has been credited with ${amount} Thank you for choosing DataSell`;
-        sendSmsToUser(userId, phoneFallback, message);
-      } catch (smsErr) {
-        console.error('SMS notification error:', smsErr);
-      }
+      console.log(`📝 [CALLBACK] Payment record created for ref: ${reference}`);
+
+      // Send SMS notification async
+      setImmediate(async () => {
+        try {
+          const username = userData.displayName || userData.username || userData.name || userData.email || 'Customer';
+          const phoneFallback = userData.phone || userData.phoneNumber || '';
+          const message = `hello ${username} your DataSell has been credited with ₵${amount}. Thank you for choosing DataSell`;
+          sendSmsToUser(userId, phoneFallback, message);
+          console.log(`📱 [CALLBACK-ASYNC] SMS sent for ref: ${reference}`);
+        } catch (smsErr) {
+          console.error(`⚠️ [CALLBACK-ASYNC] SMS notification error:`, smsErr.message);
+        }
+      });
 
       // Store payment success in session for confirmation page
       req.session.paymentConfirmation = {
         amount: amount,
         userId: userId,
-        timestamp: new Date().toISOString()
+        reference: reference,
+        timestamp: new Date().toISOString(),
+        source: 'callback_credited'
       };
       
-      console.log('💾 Payment confirmation stored in session:', req.session.paymentConfirmation);
+      console.log(`💾 [CALLBACK] Payment confirmation stored in session for ref: ${reference}`);
       
       req.session.save((err) => {
         if (err) {
-          console.error('❌ Session save error:', err);
+          console.error('❌ [CALLBACK] Session save error:', err);
           // Redirect with amount in URL as fallback
-          return res.redirect(`/payment-confirmation?amount=${amount}`);
+          return res.redirect(`/payment-confirmation?amount=${amount}&ref=${reference}`);
         }
-        console.log('✅ Session saved successfully, redirecting to confirmation page');
+        console.log('✅ [CALLBACK] Session saved successfully, redirecting to confirmation page');
         // Redirect to confirmation page
         res.redirect('/payment-confirmation');
       });
     } else {
-      console.log('❌ Payment verification failed: status is not success');
+      console.log(`❌ [CALLBACK] Payment verification failed: status is not 'success', got: ${result.data.status}`);
       res.redirect('/payment-confirmation?status=failed');
     }
   } catch (error) {
-    console.error('Payment callback error:', error);
+    console.error(`❌ [CALLBACK] Error:`, {
+      message: error.message,
+      paystackStatus: error.response?.status,
+      paystackData: error.response?.data
+    });
     res.redirect('/payment-confirmation?status=error');
   }
 });
@@ -2727,7 +2817,7 @@ function isProviderBalanceError(datamartData) {
 // Set to: https://datasell.store/api/paystack/webhook
 // ============================================
 // ULTRA-EFFICIENT PAYSTACK WEBHOOK
-// Credits wallet in <1 second, handles notifications async
+// Credits wallet in <500ms, handles notifications async
 // ============================================
 app.post('/api/paystack/webhook', async (req, res) => {
   const webhookStartTime = Date.now();
@@ -2736,8 +2826,18 @@ app.post('/api/paystack/webhook', async (req, res) => {
     // Verify webhook signature from Paystack
     const paystackSignature = req.headers['x-paystack-signature'];
     
+    if (!paystackSignature) {
+      console.error('❌ [WEBHOOK] No x-paystack-signature header present');
+      return res.status(401).json({ success: false, error: 'Unauthorized - Missing signature' });
+    }
+    
     // Use rawBody if available, otherwise stringify the body
     const bodyForSignature = req.rawBody || JSON.stringify(req.body);
+    
+    if (!bodyForSignature) {
+      console.error('❌ [WEBHOOK] No body content to verify');
+      return res.status(401).json({ success: false, error: 'Unauthorized - No body' });
+    }
     
     // Compute HMAC-SHA512 signature
     const crypto = require('crypto');
@@ -2748,7 +2848,7 @@ app.post('/api/paystack/webhook', async (req, res) => {
 
     // Verify signature matches
     if (hash !== paystackSignature) {
-      console.warn('⚠️ WEBHOOK BLOCKED: Invalid webhook signature from Paystack');
+      console.warn('❌ [WEBHOOK] BLOCKED: Invalid webhook signature from Paystack');
       console.warn(`Expected: ${paystackSignature}, Got: ${hash}`);
       return res.status(401).json({ success: false, error: 'Unauthorized' });
     }
@@ -2768,12 +2868,17 @@ app.post('/api/paystack/webhook', async (req, res) => {
       // Validate required fields
       if (!userId) {
         console.error('❌ [WEBHOOK] No userId in webhook metadata for reference:', reference);
-        return res.status(400).json({ success: false, error: 'Missing userId' });
+        return res.status(200).json({ success: true, message: 'Missing userId - payment not credited' });
+      }
+
+      if (!reference) {
+        console.error('❌ [WEBHOOK] No reference in webhook data');
+        return res.status(200).json({ success: true, message: 'Missing reference' });
       }
 
       console.log(`⏱️ [WEBHOOK] Processing payment - Reference: ${reference}, User: ${userId}, Amount: ₵${amountInCedis}`);
 
-      // STEP 1: Check if payment already processed (to prevent duplicate credits)
+      // STEP 1: Record payment IMMEDIATELY with 'processing' status to prevent duplicates
       const paymentsRef = admin.database().ref('payments');
       const existingPaymentSnapshot = await paymentsRef
         .orderByChild('reference')
@@ -2790,13 +2895,30 @@ app.post('/api/paystack/webhook', async (req, res) => {
         });
       }
 
+      // Mark payment as being processed to block any concurrent requests
+      const tempPaymentRef = admin.database().ref('payments').push();
+      const paymentId = tempPaymentRef.key;
+
+      await tempPaymentRef.set({
+        userId,
+        reference,
+        amount: amountInCedis,
+        status: 'processing',
+        source: 'webhook',
+        initiatedAt: new Date().toISOString()
+      });
+
+      console.log(`📌 [WEBHOOK] Payment marked as processing: ${paymentId}`);
+
       // STEP 2: Get user data
       const userRef = admin.database().ref('users/' + userId);
       const userSnapshot = await userRef.once('value');
       
       if (!userSnapshot.exists()) {
         console.error(`❌ [WEBHOOK] User not found: ${userId}`);
-        return res.status(404).json({ success: false, error: 'User not found' });
+        // Mark as failed and remove the processing record
+        await tempPaymentRef.remove();
+        return res.status(200).json({ success: true, message: 'User not found' });
       }
 
       const userData = userSnapshot.val();
@@ -2820,10 +2942,10 @@ app.post('/api/paystack/webhook', async (req, res) => {
       console.log(`✅ [WEBHOOK] WALLET CREDITED in ${walletCreditTime}ms for ${userId}`);
 
       // STEP 4: Return response immediately to Paystack (wallet is already credited!)
-      // This is the critical response - client knows payment succeeded
+      // This is the critical response - Paystack knows payment succeeded
       const response = {
         success: true,
-        message: 'Wallet credited successfully',
+        message: 'Payment received and wallet credited',
         amount: amountInCedis,
         newBalance: newBalance,
         reference: reference,
@@ -2832,20 +2954,21 @@ app.post('/api/paystack/webhook', async (req, res) => {
         timestamp: new Date().toISOString()
       };
 
-      // STEP 5: Handle all notifications AFTER sending response (non-blocking)
-      // These execute in parallel and don't affect response time
+      console.log(`📤 [WEBHOOK] Sending success response after ${walletCreditTime}ms`);
+      
+      // Send response immediately
+      res.status(200).json(response);
+
+      // STEP 5: Handle all background tasks AFTER response is sent (non-blocking)
+      // These execute asynchronously and don't affect response time
       setImmediate(async () => {
         try {
-          // Record the payment
-          const paymentRef = admin.database().ref('payments').push();
-          await paymentRef.set({
-            userId,
+          // Update payment record with full details and mark as complete
+          await tempPaymentRef.update({
+            status: 'success',
             amount: amountInCedis,
             paystackAmount: amount / 100,
             fee: (amount / 100) - amountInCedis,
-            reference,
-            status: 'success',
-            source: 'webhook',
             paystackData: {
               status: data.status,
               authorization: data.authorization || {},
@@ -2853,11 +2976,13 @@ app.post('/api/paystack/webhook', async (req, res) => {
               created_at: data.created_at,
               paid_at: data.paid_at
             },
-            timestamp: new Date().toISOString()
+            walletCredited: true,
+            creditedAt: new Date().toISOString(),
+            completedAt: new Date().toISOString()
           });
-          console.log(`📝 [WEBHOOK-ASYNC] Payment record created for ${reference}`);
+          console.log(`✅ [WEBHOOK-ASYNC] Payment record updated for ${reference}`);
         } catch (err) {
-          console.error(`⚠️ [WEBHOOK-ASYNC] Failed to record payment: ${err.message}`);
+          console.error(`⚠️ [WEBHOOK-ASYNC] Failed to update payment: ${err.message}`);
         }
 
         try {
@@ -2876,7 +3001,7 @@ app.post('/api/paystack/webhook', async (req, res) => {
           const notificationRef = admin.database().ref('notifications').push();
           await notificationRef.set({
             userId,
-            title: '💰 Wallet Funded',
+            title: '💰 Wallet Funded Successfully',
             message: `Your wallet has been credited with ₵${amountInCedis}`,
             type: 'wallet_funded',
             amount: amountInCedis,
@@ -2896,7 +3021,7 @@ app.post('/api/paystack/webhook', async (req, res) => {
             event: event,
             reference: reference,
             userId: userId,
-            status: 'processed',
+            status: 'success',
             amount: amountInCedis,
             walletCreditTime: walletCreditTime,
             totalProcessingTime: Date.now() - webhookStartTime,
@@ -2908,9 +3033,7 @@ app.post('/api/paystack/webhook', async (req, res) => {
         }
       });
 
-      // Send response IMMEDIATELY after wallet credit (don't wait for async tasks)
-      console.log(`📤 [WEBHOOK] Sending success response in ${walletCreditTime}ms`);
-      return res.status(200).json(response);
+      // Don't return here - let execution continue to the end of the try block
 
     } else if (event === 'charge.success') {
       console.warn(`⚠️ [WEBHOOK] Charge success but status is not 'success': ${data.status}`);
@@ -2927,18 +3050,19 @@ app.post('/api/paystack/webhook', async (req, res) => {
       processingTime: Date.now() - webhookStartTime + 'ms'
     });
 
-    // Log failed webhook processing
+    // Try to log the error to database
     try {
       const logsRef = admin.database().ref('webhook_logs').push();
       await logsRef.set({
-        event: 'ERROR',
+        event: 'WEBHOOK_ERROR',
         error: error.message,
+        stack: error.stack?.substring(0, 500),
         status: 'failed',
         timestamp: new Date().toISOString(),
         processingTime: Date.now() - webhookStartTime
       });
     } catch (logErr) {
-      console.error('Failed to log webhook error:', logErr);
+      console.error('⚠️ Failed to log webhook error:', logErr);
     }
 
     // Always return 200 to Paystack to prevent retries
