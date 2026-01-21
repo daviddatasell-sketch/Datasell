@@ -1303,7 +1303,8 @@
             if (document.getElementById('successUserNumber')) document.getElementById('successUserNumber').textContent = formatPhoneDisplay(data.userPhone);
             if (document.getElementById('successReceiverNumber')) document.getElementById('successReceiverNumber').textContent = formatPhoneDisplay(data.phoneNumber);
             if (document.getElementById('successPackage')) {
-                const displayText = data.packageName ? `${data.packageName} - ₵${(data.packagePrice||0).toFixed(2)}${data.discountInfo || ''}` : (data.packageName || '');
+                const packagePrice = typeof data.packagePrice === 'string' ? parseFloat(data.packagePrice) : (data.packagePrice || 0);
+                const displayText = data.packageName ? `${data.packageName} - ₵${packagePrice.toFixed(2)}${data.discountInfo || ''}` : (data.packageName || '');
                 document.getElementById('successPackage').textContent = displayText;
             }
             if (document.getElementById('successNetwork')) document.getElementById('successNetwork').textContent = `${networkLabel} Network`;
