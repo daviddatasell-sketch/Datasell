@@ -55,7 +55,7 @@ const PORT = process.env.PORT || 3000;
 // Render uses a reverse proxy, so we need to trust it
 app.set('trust proxy', 1);
 
-// Email transporter configuration for password reset
+// Email transporter configuration for password reset (Gmail SMTP)
 const emailTransporter = nodemailer.createTransport({
   host: 'smtp.gmail.com',
   port: 465,
@@ -159,9 +159,10 @@ async function sendPasswordResetEmail(email, resetLink, userName = 'User') {
   }
 }
 
-// mNotify SMS configuration
-const MNOTIFY_API_KEY = process.env.MNOTIFY_API_KEY || '8QZ7zFXx1iFXvRYnDOmoyUabC';
-const MNOTIFY_ENDPOINT = 'https://api.mnotify.com/api/sms/quick';
+// Wigal SMS configuration (replacing mNotify)
+const WIGAL_SMS_API_URL = 'https://frog.wigal.com.gh';
+const WIGAL_SMS_API_KEY = process.env.WIGAL_API_KEY || '$2a$10$7inYR.nIaYyOq.tGcTECQOrrh9WYm5k1IBdykmoLFXyggc20kvMwK';
+const WIGAL_SMS_SENDER = 'DataSell';
 
 async function sendSmsToUser(userId, phoneFallback, message) {
   try {
@@ -169,23 +170,35 @@ async function sendSmsToUser(userId, phoneFallback, message) {
     const user = userSnap.val() || {};
     const phone = (user.phone || user.phoneNumber || phoneFallback || '').toString();
     if (!phone || phone.length < 8) {
-      console.log('SMS not sent: no valid phone for user', userId);
+      console.log('📱 SMS not sent: no valid phone for user', userId);
       return;
     }
 
-    const url = `${MNOTIFY_ENDPOINT}?key=${MNOTIFY_API_KEY}`;
+    console.log(`📱 [WIGAL-SMS] Sending SMS to ${phone} for user ${userId}`);
+
     const payload = {
-      recipient: [phone],
-      sender: 'DataSell',
-      message,
-      is_schedule: false,
-      schedule_date: ''
+      api_key: WIGAL_SMS_API_KEY,
+      phone: phone,
+      message: message,
+      sender_id: WIGAL_SMS_SENDER
     };
 
-    const resp = await axios.post(url, payload, { headers: { 'Content-Type': 'application/json' } });
-    console.log('📩 SMS sent to', phone, 'response:', resp.data);
+    const response = await axios.post(`${WIGAL_SMS_API_URL}/api/sms/send`, payload, {
+      headers: {
+        'Content-Type': 'application/json',
+        'Accept': 'application/json'
+      },
+      timeout: 15000
+    });
+
+    console.log(`✅ [WIGAL-SMS] SMS sent successfully to ${phone}`);
+    console.log(`📩 [WIGAL-SMS] Response:`, response.data);
   } catch (err) {
-    console.error('❌ SMS send error for user', userId, err?.response?.data || err.message || err);
+    console.error(`❌ [WIGAL-SMS] SMS send error for user ${userId}:`, {
+      message: err.message,
+      status: err.response?.status,
+      data: err.response?.data
+    });
   }
 }
 console.log('Loaded environment variables:', process.env);
