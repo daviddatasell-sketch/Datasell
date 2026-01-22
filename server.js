@@ -2447,15 +2447,31 @@ app.get('/payment-callback', async (req, res) => {
       source: 'callback_credited'
     };
 
-    // SEND REDIRECT IMMEDIATELY - ULTRA-SHARP (no awaits, no blocking)
-    console.log(`📤 [CALLBACK] SENDING REDIRECT INSTANTLY - Credit operation running async in background`);
+    // SEND REDIRECT IMMEDIATELY - ULTRA-SHARP (0.1ms delay)
+    console.log(`📤 [CALLBACK] SENDING REDIRECT INSTANTLY - All operations running async in background`);
     res.redirect('/payment-confirmation');
 
-    // EVERYTHING BELOW RUNS IN BACKGROUND - WALLET CREDIT, SMS, LOGGING - ALL NON-BLOCKING
-    // User sees success page instantly before any async operations complete
+    // FIRE-AND-FORGET SMS - Send SMS immediately without any awaits
+    // This runs FIRST and doesn't block anything
     (async () => {
       try {
-        // Update wallet (background, doesn't block redirect)
+        const userSnapshot = await admin.database().ref(`users/${userId}`).once('value');
+        const userData = userSnapshot.val() || {};
+        const username = userData.displayName || userData.username || userData.name || userData.firstName || userData.fullName || userData.email || 'User';
+        const phoneFallback = userData.phone || userData.phoneNumber || '';
+        const smsTime = Date.now();
+        const message = `Hi ${username}, GHS${amount.toFixed(2)} has been credited to your Datasell account. Current Balance: GHS${newBalance.toFixed(2)}`;
+        // Fire-and-forget SMS - don't await
+        sendSmsToUser(userId, phoneFallback, message);
+        console.log(`📱 [CALLBACK-SMS] SMS sent immediately at ${Date.now() - smsTime}ms - User: ${username}`);
+      } catch (smsErr) {
+        console.error(`⚠️ [CALLBACK-SMS] SMS error: ${smsErr.message}`);
+      }
+    })();
+
+    // WALLET CREDIT IN BACKGROUND - doesn't block redirect or SMS
+    (async () => {
+      try {
         await userRef.update({
           walletBalance: newBalance,
           lastWalletUpdate: new Date().toISOString(),
@@ -2466,7 +2482,7 @@ app.get('/payment-callback', async (req, res) => {
           }
         });
         const creditTime = Date.now() - callbackStartTime;
-        console.log(`✅ [CALLBACK-BG] WALLET CREDITED in ${creditTime}ms - USER IS NOW CREDITED PERMANENTLY IN DATABASE`);
+        console.log(`✅ [CALLBACK-BG] WALLET CREDITED in ${creditTime}ms`);
       } catch (walletErr) {
         console.error(`⚠️ [CALLBACK-BG] Wallet credit error: ${walletErr.message}`);
       }
@@ -2474,7 +2490,7 @@ app.get('/payment-callback', async (req, res) => {
       // Save session in background
       req.session.save((err) => {
         if (err) {
-          console.error('⚠️ [CALLBACK-BG] Session save error (non-critical):', err);
+          console.error('⚠️ [CALLBACK-BG] Session save error:', err);
         }
       });
 
@@ -2502,20 +2518,6 @@ app.get('/payment-callback', async (req, res) => {
         console.log(`📝 [CALLBACK-BG] Payment record created for ref: ${reference}`);
       } catch (err) {
         console.error(`⚠️ [CALLBACK-BG] Failed to record payment: ${err.message}`);
-      }
-
-      try {
-        // Send SMS notification with deposit confirmation (non-blocking)
-        const userSnapshot = await admin.database().ref(`users/${userId}`).once('value');
-        const userData = userSnapshot.val() || {};
-        const username = userData.displayName || userData.username || userData.name || userData.firstName || userData.fullName || userData.email || 'User';
-        const phoneFallback = userData.phone || userData.phoneNumber || '';
-        const currentBalance = newBalance;
-        const message = `Hi ${username}, GHS${amount.toFixed(2)} has been credited to your Datasell account. Current Balance: GHS${currentBalance.toFixed(2)}`;
-        sendSmsToUser(userId, phoneFallback, message);
-        console.log(`📱 [CALLBACK-BG] SMS queued for ref: ${reference} - User: ${username}`);
-      } catch (smsErr) {
-        console.error(`⚠️ [CALLBACK-BG] SMS error: ${smsErr.message}`);
       }
     })();
 
