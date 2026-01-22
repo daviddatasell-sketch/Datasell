@@ -2462,14 +2462,17 @@ app.get('/payment-callback', async (req, res) => {
       source: 'callback_credited'
     };
 
-    // Save session and redirect IMMEDIATELY (don't wait for background tasks)
+    // Save session ASYNCHRONOUSLY - don't block redirect
     console.log(`📤 [CALLBACK] Redirecting to confirmation page (${creditTime}ms elapsed)`);
+    
+    // Send redirect immediately without waiting for session save
+    res.redirect('/payment-confirmation');
+    
+    // Save session in background (doesn't block response)
     req.session.save((err) => {
       if (err) {
-        console.error('⚠️ [CALLBACK] Session save error:', err);
-        return res.redirect(`/payment-confirmation?amount=${amount}&ref=${reference}`);
+        console.error('⚠️ [CALLBACK] Session save error (non-blocking):', err);
       }
-      res.redirect('/payment-confirmation');
     });
 
     // STEP 4: All background tasks run AFTER redirect response is sent
