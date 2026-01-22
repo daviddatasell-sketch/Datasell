@@ -2451,9 +2451,12 @@ app.get('/payment-callback', async (req, res) => {
     });
 
     const creditTime = Date.now() - callbackStartTime;
-    console.log(`✅ [CALLBACK] WALLET CREDITED in ${creditTime}ms`);
+    console.log(`✅ [CALLBACK] WALLET CREDITED in ${creditTime}ms - USER IS NOW CREDITED REGARDLESS OF REDIRECT`);
 
-    // STEP 3: Store confirmation in session for immediate redirect
+    // CRITICAL: At this point, user is 100% credited. Redirect is non-blocking.
+    // Even if redirect fails, user keeps their money.
+    
+    // Store confirmation in session
     req.session.paymentConfirmation = {
       amount: amount,
       userId: userId,
@@ -2462,16 +2465,24 @@ app.get('/payment-callback', async (req, res) => {
       source: 'callback_credited'
     };
 
-    // Save session ASYNCHRONOUSLY - don't block redirect
-    console.log(`📤 [CALLBACK] Redirecting to confirmation page (${creditTime}ms elapsed)`);
+    // SEND REDIRECT IMMEDIATELY - completely non-blocking
+    // User will see success page, but if it fails, they're still credited in Firebase
+    console.log(`📤 [CALLBACK] Sending redirect (${creditTime}ms elapsed) - WALLET ALREADY SAFE IN DATABASE`);
     
-    // Send redirect immediately without waiting for session save
-    res.redirect('/payment-confirmation');
-    
-    // Save session in background (doesn't block response)
+    // Use setImmediate to ensure redirect doesn't block anything
+    setImmediate(() => {
+      try {
+        res.redirect('/payment-confirmation');
+      } catch (redirectErr) {
+        console.error('⚠️ [CALLBACK] Redirect error (non-critical, wallet already credited):', redirectErr.message);
+        // Even if redirect fails, user is already credited - mission accomplished
+      }
+    });
+
+    // Save session in background
     req.session.save((err) => {
       if (err) {
-        console.error('⚠️ [CALLBACK] Session save error (non-blocking):', err);
+        console.error('⚠️ [CALLBACK] Session save error (non-blocking, wallet safe):', err);
       }
     });
 
@@ -2943,13 +2954,13 @@ app.post('/api/paystack/webhook', async (req, res) => {
       });
 
       const walletCreditTime = Date.now() - webhookStartTime;
-      console.log(`✅ [WEBHOOK] WALLET CREDITED in ${walletCreditTime}ms for ${userId}`);
+      console.log(`✅ [WEBHOOK] WALLET CREDITED in ${walletCreditTime}ms for ${userId} - USER IS NOW CREDITED PERMANENTLY IN DATABASE`);
 
       // STEP 4: Return response immediately to Paystack (wallet is already credited!)
       // This is the critical response - Paystack knows payment succeeded
       const response = {
         success: true,
-        message: 'Payment received and wallet credited',
+        message: 'Payment received and wallet credited permanently',
         amount: amountInCedis,
         newBalance: newBalance,
         reference: reference,
