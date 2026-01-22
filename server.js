@@ -162,7 +162,7 @@ async function sendPasswordResetEmail(email, resetLink, userName = 'User') {
 // Wigal SMS configuration (replacing mNotify)
 const WIGAL_SMS_API_URL = 'https://frogapi.wigal.com.gh/api/v3/sms/send';
 const WIGAL_SMS_API_KEY = process.env.WIGAL_API_KEY || '$2a$10$7inYR.nIaYyOq.tGcTECQOrrh9WYm5k1IBdykmoLFXyggc20kvMwK';
-const WIGAL_SMS_USERNAME = process.env.WIGAL_USERNAME || 'datasell';
+const WIGAL_SMS_USERNAME = 'Datasell';
 const WIGAL_SMS_SENDER = 'Datasellgh';
 
 async function sendSmsToUser(userId, phoneFallback, message) {
