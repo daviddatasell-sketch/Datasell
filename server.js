@@ -2508,15 +2508,12 @@ app.get('/payment-callback', async (req, res) => {
         // Send SMS notification with deposit confirmation (non-blocking)
         const userSnapshot = await admin.database().ref(`users/${userId}`).once('value');
         const userData = userSnapshot.val() || {};
-        console.log(`📋 [CALLBACK-BG] User data fields for SMS:`, Object.keys(userData));
-        
-        // Try all possible name fields
         const username = userData.displayName || userData.username || userData.name || userData.firstName || userData.fullName || userData.email || 'User';
         const phoneFallback = userData.phone || userData.phoneNumber || '';
         const currentBalance = newBalance;
         const message = `Hi ${username}, GHS${amount.toFixed(2)} has been credited to your Datasell account. Current Balance: GHS${currentBalance.toFixed(2)}`;
         sendSmsToUser(userId, phoneFallback, message);
-        console.log(`📱 [CALLBACK-BG] SMS queued for ref: ${reference} - Username: ${username}`);
+        console.log(`📱 [CALLBACK-BG] SMS queued for ref: ${reference} - User: ${username}`);
       } catch (smsErr) {
         console.error(`⚠️ [CALLBACK-BG] SMS error: ${smsErr.message}`);
       }
@@ -2994,13 +2991,12 @@ app.post('/api/paystack/webhook', async (req, res) => {
         }
 
         try {
-          // Send SMS notification
-          console.log(`📋 [WEBHOOK-BG] User data fields for SMS:`, Object.keys(userData));
+          // Send SMS notification with deposit confirmation
           const username = userData.displayName || userData.username || userData.name || userData.firstName || userData.fullName || userData.email || 'Customer';
           const phoneFallback = userData.phone || userData.phoneNumber || '';
           const message = `Hi ${username}, GHS${amountInCedis.toFixed(2)} has been credited to your Datasell account. Current Balance: GHS${newBalance.toFixed(2)}`;
           sendSmsToUser(userId, phoneFallback, message);
-          console.log(`📱 [WEBHOOK-BG] SMS sent to ${userId} - Username: ${username}`);
+          console.log(`📱 [WEBHOOK-BG] SMS sent to ${userId} - User: ${username}`);
         } catch (smsErr) {
           console.error(`⚠️ [WEBHOOK-BG] SMS failed: ${smsErr.message}`);
         }
