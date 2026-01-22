@@ -1564,7 +1564,7 @@ app.post('/api/purchase-data', requireAuth, async (req, res) => {
 
     // Notify user that payment/order is received and processing
     try {
-      const notifyMsg = `Payment received. Your data package will be delivered within 1 to 30 minutes. If any troubles contact support on 0553843255.`;
+      const notifyMsg = `Order received. Your ${packageName} will be delivered to ${phoneNumber} within 1 to 30 minutes. If any troubles contact support on datasellgh@gmail.com`;
       await sendSmsToUser(userId, phoneNumber, notifyMsg);
       console.log('📩 Order-created SMS sent for transaction', transactionId);
     } catch (smsErr) {

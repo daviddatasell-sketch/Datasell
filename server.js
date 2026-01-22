@@ -2465,30 +2465,23 @@ app.get('/payment-callback', async (req, res) => {
       source: 'callback_credited'
     };
 
-    // SEND REDIRECT IMMEDIATELY - completely non-blocking
-    // User will see success page, but if it fails, they're still credited in Firebase
-    console.log(`📤 [CALLBACK] Sending redirect (${creditTime}ms elapsed) - WALLET ALREADY SAFE IN DATABASE`);
+    // SEND REDIRECT IMMEDIATELY - SHARP AND INSTANT
+    // User will see success page instantly after Paystack success message
+    console.log(`📤 [CALLBACK] Sending redirect instantly (${creditTime}ms elapsed) - WALLET ALREADY PERMANENTLY CREDITED IN DATABASE`);
     
-    // Use setImmediate to ensure redirect doesn't block anything
-    setImmediate(() => {
-      try {
-        res.redirect('/payment-confirmation');
-      } catch (redirectErr) {
-        console.error('⚠️ [CALLBACK] Redirect error (non-critical, wallet already credited):', redirectErr.message);
-        // Even if redirect fails, user is already credited - mission accomplished
-      }
-    });
+    // Redirect WITHOUT waiting for session save - wallet is already safe
+    res.redirect('/payment-confirmation');
 
-    // Save session in background
+    // Save session in background (non-blocking)
     req.session.save((err) => {
       if (err) {
-        console.error('⚠️ [CALLBACK] Session save error (non-blocking, wallet safe):', err);
+        console.error('⚠️ [CALLBACK] Session save error (non-critical, wallet safe):', err);
       }
     });
 
-    // STEP 4: All background tasks run AFTER redirect response is sent
-    // These do NOT block the user redirect
-    setImmediate(async () => {
+    // STEP 4: All background tasks run AFTER redirect response is sent (truly async, non-blocking)
+    // These do NOT delay the user redirect
+    (async () => {
       try {
         // Record payment record
         const paymentRef = admin.database().ref('payments').push();
@@ -2516,18 +2509,19 @@ app.get('/payment-callback', async (req, res) => {
       }
 
       try {
-        // Send SMS notification
+        // Send SMS notification with deposit confirmation
         const userSnapshot = await admin.database().ref(`users/${userId}`).once('value');
         const userData = userSnapshot.val() || {};
-        const username = userData.displayName || userData.username || userData.name || userData.email || 'Customer';
+        const username = userData.displayName || userData.username || userData.name || userData.email || 'User';
         const phoneFallback = userData.phone || userData.phoneNumber || '';
-        const message = `hello ${username} your DataSell has been credited with ₵${amount}. Thank you for choosing DataSell`;
+        const currentBalance = newBalance;
+        const message = `Hi ${username}, GHS${amount.toFixed(2)} has been credited to your Datasell account. Current Balance: GHS${currentBalance.toFixed(2)}`;
         sendSmsToUser(userId, phoneFallback, message);
         console.log(`📱 [CALLBACK-ASYNC] SMS queued for ref: ${reference}`);
       } catch (smsErr) {
         console.error(`⚠️ [CALLBACK-ASYNC] SMS error: ${smsErr.message}`);
       }
-    });
+    })();
 
   } catch (error) {
     console.error(`❌ [CALLBACK] Unexpected error:`, {
@@ -3004,7 +2998,7 @@ app.post('/api/paystack/webhook', async (req, res) => {
           // Send SMS notification
           const username = userData.displayName || userData.username || userData.name || userData.email || 'Customer';
           const phoneFallback = userData.phone || userData.phoneNumber || '';
-          const message = `Hello ${username}, your DataSell wallet has been credited with ₵${amountInCedis}. Thank you!`;
+          const message = `Hi ${username}, GHS${amountInCedis.toFixed(2)} has been credited to your Datasell account. Current Balance: GHS${newBalance.toFixed(2)}`;
           sendSmsToUser(userId, phoneFallback, message);
           console.log(`📱 [WEBHOOK-ASYNC] SMS sent to ${userId}`);
         } catch (smsErr) {
@@ -3724,7 +3718,7 @@ app.post('/api/purchase-data', requireAuth, async (req, res) => {
 
     // Notify user that payment/order is received and processing
     try {
-      const notifyMsg = `Payment received. Your data package will be delivered within 1 to 30 minutes. If any troubles contact support on 0553843255.`;
+      const notifyMsg = `Order received. Your ${packageName} will be delivered to ${phoneNumber} within 1 to 30 minutes. If any troubles contact support on datasellgh@gmail.com`;
       await sendSmsToUser(userId, phoneNumber, notifyMsg);
       console.log('📩 Order-created SMS sent for transaction', transactionId);
     } catch (smsErr) {
