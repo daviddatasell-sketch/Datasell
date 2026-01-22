@@ -2438,25 +2438,7 @@ app.get('/payment-callback', async (req, res) => {
 
     const newBalance = currentBalance + amount;
 
-    // Credit wallet
-    console.log(`💰 [CALLBACK] CREDITING WALLET: ${userId} | ₵${currentBalance} → ₵${newBalance}`);
-    await userRef.update({
-      walletBalance: newBalance,
-      lastWalletUpdate: new Date().toISOString(),
-      lastWalletCredit: {
-        amount: amount,
-        reference: reference,
-        timestamp: new Date().toISOString()
-      }
-    });
-
-    const creditTime = Date.now() - callbackStartTime;
-    console.log(`✅ [CALLBACK] WALLET CREDITED in ${creditTime}ms - USER IS NOW CREDITED REGARDLESS OF REDIRECT`);
-
-    // CRITICAL: At this point, user is 100% credited. Redirect is non-blocking.
-    // Even if redirect fails, user keeps their money.
-    
-    // Store confirmation in session
+    // Store confirmation in session immediately (non-blocking)
     req.session.paymentConfirmation = {
       amount: amount,
       userId: userId,
@@ -2465,23 +2447,37 @@ app.get('/payment-callback', async (req, res) => {
       source: 'callback_credited'
     };
 
-    // SEND REDIRECT IMMEDIATELY - SHARP AND INSTANT
-    // User will see success page instantly after Paystack success message
-    console.log(`📤 [CALLBACK] Sending redirect instantly (${creditTime}ms elapsed) - WALLET ALREADY PERMANENTLY CREDITED IN DATABASE`);
-    
-    // Redirect WITHOUT waiting for session save - wallet is already safe
+    // SEND REDIRECT IMMEDIATELY - ULTRA-SHARP (no awaits, no blocking)
+    console.log(`📤 [CALLBACK] SENDING REDIRECT INSTANTLY - Credit operation running async in background`);
     res.redirect('/payment-confirmation');
 
-    // Save session in background (non-blocking)
-    req.session.save((err) => {
-      if (err) {
-        console.error('⚠️ [CALLBACK] Session save error (non-critical, wallet safe):', err);
-      }
-    });
-
-    // STEP 4: All background tasks run AFTER redirect response is sent (truly async, non-blocking)
-    // These do NOT delay the user redirect
+    // EVERYTHING BELOW RUNS IN BACKGROUND - WALLET CREDIT, SMS, LOGGING - ALL NON-BLOCKING
+    // User sees success page instantly before any async operations complete
     (async () => {
+      try {
+        // Update wallet (background, doesn't block redirect)
+        await userRef.update({
+          walletBalance: newBalance,
+          lastWalletUpdate: new Date().toISOString(),
+          lastWalletCredit: {
+            amount: amount,
+            reference: reference,
+            timestamp: new Date().toISOString()
+          }
+        });
+        const creditTime = Date.now() - callbackStartTime;
+        console.log(`✅ [CALLBACK-BG] WALLET CREDITED in ${creditTime}ms - USER IS NOW CREDITED PERMANENTLY IN DATABASE`);
+      } catch (walletErr) {
+        console.error(`⚠️ [CALLBACK-BG] Wallet credit error: ${walletErr.message}`);
+      }
+
+      // Save session in background
+      req.session.save((err) => {
+        if (err) {
+          console.error('⚠️ [CALLBACK-BG] Session save error (non-critical):', err);
+        }
+      });
+
       try {
         // Record payment record
         const paymentRef = admin.database().ref('payments').push();
@@ -2503,23 +2499,26 @@ app.get('/payment-callback', async (req, res) => {
           },
           timestamp: new Date().toISOString()
         });
-        console.log(`📝 [CALLBACK-ASYNC] Payment record created for ref: ${reference}`);
+        console.log(`📝 [CALLBACK-BG] Payment record created for ref: ${reference}`);
       } catch (err) {
-        console.error(`⚠️ [CALLBACK-ASYNC] Failed to record payment: ${err.message}`);
+        console.error(`⚠️ [CALLBACK-BG] Failed to record payment: ${err.message}`);
       }
 
       try {
-        // Send SMS notification with deposit confirmation
+        // Send SMS notification with deposit confirmation (non-blocking)
         const userSnapshot = await admin.database().ref(`users/${userId}`).once('value');
         const userData = userSnapshot.val() || {};
-        const username = userData.displayName || userData.username || userData.name || userData.email || 'User';
+        console.log(`📋 [CALLBACK-BG] User data fields for SMS:`, Object.keys(userData));
+        
+        // Try all possible name fields
+        const username = userData.displayName || userData.username || userData.name || userData.firstName || userData.fullName || userData.email || 'User';
         const phoneFallback = userData.phone || userData.phoneNumber || '';
         const currentBalance = newBalance;
         const message = `Hi ${username}, GHS${amount.toFixed(2)} has been credited to your Datasell account. Current Balance: GHS${currentBalance.toFixed(2)}`;
         sendSmsToUser(userId, phoneFallback, message);
-        console.log(`📱 [CALLBACK-ASYNC] SMS queued for ref: ${reference}`);
+        console.log(`📱 [CALLBACK-BG] SMS queued for ref: ${reference} - Username: ${username}`);
       } catch (smsErr) {
-        console.error(`⚠️ [CALLBACK-ASYNC] SMS error: ${smsErr.message}`);
+        console.error(`⚠️ [CALLBACK-BG] SMS error: ${smsErr.message}`);
       }
     })();
 
@@ -2996,13 +2995,14 @@ app.post('/api/paystack/webhook', async (req, res) => {
 
         try {
           // Send SMS notification
-          const username = userData.displayName || userData.username || userData.name || userData.email || 'Customer';
+          console.log(`📋 [WEBHOOK-BG] User data fields for SMS:`, Object.keys(userData));
+          const username = userData.displayName || userData.username || userData.name || userData.firstName || userData.fullName || userData.email || 'Customer';
           const phoneFallback = userData.phone || userData.phoneNumber || '';
           const message = `Hi ${username}, GHS${amountInCedis.toFixed(2)} has been credited to your Datasell account. Current Balance: GHS${newBalance.toFixed(2)}`;
           sendSmsToUser(userId, phoneFallback, message);
-          console.log(`📱 [WEBHOOK-ASYNC] SMS sent to ${userId}`);
+          console.log(`📱 [WEBHOOK-BG] SMS sent to ${userId} - Username: ${username}`);
         } catch (smsErr) {
-          console.error(`⚠️ [WEBHOOK-ASYNC] SMS failed: ${smsErr.message}`);
+          console.error(`⚠️ [WEBHOOK-BG] SMS failed: ${smsErr.message}`);
         }
 
         try {
