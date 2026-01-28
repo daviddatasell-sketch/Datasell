@@ -2940,6 +2940,7 @@ app.post('/api/paystack/webhook', async (req, res) => {
       // Mark payment as being processed to block any concurrent requests
       const tempPaymentRef = admin.database().ref('payments').push();
       const paymentId = tempPaymentRef.key;
+      const nowTimestamp = new Date().toISOString();
 
       await tempPaymentRef.set({
         userId,
@@ -2947,7 +2948,8 @@ app.post('/api/paystack/webhook', async (req, res) => {
         amount: amountInCedis,
         status: 'processing',
         source: 'webhook',
-        initiatedAt: new Date().toISOString()
+        timestamp: nowTimestamp,
+        initiatedAt: nowTimestamp
       });
 
       console.log(`📌 [WEBHOOK] Payment marked as processing: ${paymentId}`);
@@ -3009,6 +3011,7 @@ app.post('/api/paystack/webhook', async (req, res) => {
           await tempPaymentRef.update({
             status: 'success',
             amount: amountInCedis,
+            timestamp: new Date().toISOString(),
             paystackAmount: amount / 100,
             fee: (amount / 100) - amountInCedis,
             paystackData: {
