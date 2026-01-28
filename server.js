@@ -398,22 +398,21 @@ class FirebaseSessionStore extends session.Store {
 app.use(express.static(path.join(__dirname, 'public')));
 
 // Middleware to capture raw body for Paystack webhook signature verification
-// CRITICAL: Must be BEFORE any other body parsing middleware
-app.use(express.raw({ type: 'application/json', limit: '10mb' }), (req, res, next) => {
-  if (req.path === '/api/paystack/webhook') {
-    // For webhook, preserve the raw Buffer for signature verification
-    req.rawBody = req.body.toString('utf8');
-    try {
-      req.body = JSON.parse(req.rawBody);
-    } catch (e) {
-      console.error('❌ [WEBHOOK MIDDLEWARE] Failed to parse JSON:', e.message);
-      req.body = {};
-    }
-    console.log(`📥 [WEBHOOK MIDDLEWARE] Raw body captured, length: ${req.rawBody.length}`);
+// CRITICAL: Only for webhook path, not for all JSON requests
+app.use('/api/paystack/webhook', express.raw({ type: 'application/json', limit: '10mb' }), (req, res, next) => {
+  // For webhook, preserve the raw Buffer for signature verification
+  req.rawBody = req.body.toString('utf8');
+  try {
+    req.body = JSON.parse(req.rawBody);
+  } catch (e) {
+    console.error('❌ [WEBHOOK MIDDLEWARE] Failed to parse JSON:', e.message);
+    req.body = {};
   }
+  console.log(`📥 [WEBHOOK MIDDLEWARE] Raw body captured, length: ${req.rawBody.length}`);
   next();
 });
 
+// Now parse JSON for all other routes AFTER the webhook middleware
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
@@ -945,7 +944,14 @@ app.get('/api/check-auth', (req, res) => {
 // Enhanced User Login
 app.post('/api/login', async (req, res) => {
   try {
+    console.log('🔓 [LOGIN] Request received');
+    console.log('🔓 [LOGIN] Body:', req.body);
+    console.log('🔓 [LOGIN] Headers:', req.headers['content-type']);
+    
     let { email, password, rememberMe, isAdminLogin } = req.body;
+    
+    console.log('🔓 [LOGIN] Extracted values:', { email, password: password ? '***' : 'MISSING', rememberMe, isAdminLogin });
+    
     // Coerce rememberMe to boolean for safety (clients may send 'true'/'false' strings)
     rememberMe = (rememberMe === true || rememberMe === 'true');
     isAdminLogin = (isAdminLogin === true || isAdminLogin === 'true');
@@ -955,6 +961,7 @@ app.post('/api/login', async (req, res) => {
     
     if (!email || !password) {
       console.log('❌ Missing email or password');
+      console.log('❌ Debug - email:', email, 'password:', password);
       return res.status(400).json({ 
         success: false, 
         error: 'Email and password are required' 
