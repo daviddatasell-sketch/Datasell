@@ -2826,8 +2826,28 @@ function isProviderBalanceError(datamartData) {
 // ULTRA-EFFICIENT PAYSTACK WEBHOOK
 // Credits wallet in <500ms, handles notifications async
 // ============================================
+
+// TEST ENDPOINT - Verify webhook is reachable
+app.get('/api/paystack/webhook/test', (req, res) => {
+  res.json({
+    status: 'ok',
+    message: 'Webhook endpoint is reachable from Paystack',
+    timestamp: new Date().toISOString(),
+    environment: process.env.NODE_ENV,
+    baseUrl: process.env.BASE_URL
+  });
+});
+
 app.post('/api/paystack/webhook', async (req, res) => {
   const webhookStartTime = Date.now();
+  
+  // CRITICAL: Log webhook arrival immediately
+  console.log('🔔🔔🔔 [WEBHOOK RECEIVED] Paystack sent webhook!');
+  console.log(`📍 Time: ${new Date().toISOString()}`);
+  console.log(`📦 Event: ${req.body?.event}`);
+  console.log(`📎 Reference: ${req.body?.data?.reference}`);
+  console.log(`💰 Amount: ${req.body?.data?.amount}`);
+  console.log(`🧑 User ID: ${req.body?.data?.metadata?.userId}`);
   
   try {
     // Verify webhook signature from Paystack
@@ -2835,7 +2855,8 @@ app.post('/api/paystack/webhook', async (req, res) => {
     
     if (!paystackSignature) {
       console.error('❌ [WEBHOOK] No x-paystack-signature header present');
-      return res.status(401).json({ success: false, error: 'Unauthorized - Missing signature' });
+      console.log('📋 Headers:', Object.keys(req.headers));
+      return res.status(200).json({ success: false, error: 'Missing signature' });
     }
     
     // Use rawBody if available, otherwise stringify the body
@@ -2843,7 +2864,7 @@ app.post('/api/paystack/webhook', async (req, res) => {
     
     if (!bodyForSignature) {
       console.error('❌ [WEBHOOK] No body content to verify');
-      return res.status(401).json({ success: false, error: 'Unauthorized - No body' });
+      return res.status(200).json({ success: false, error: 'No body' });
     }
     
     // Compute HMAC-SHA512 signature
@@ -2856,8 +2877,10 @@ app.post('/api/paystack/webhook', async (req, res) => {
     // Verify signature matches
     if (hash !== paystackSignature) {
       console.warn('❌ [WEBHOOK] BLOCKED: Invalid webhook signature from Paystack');
-      console.warn(`Expected: ${paystackSignature}, Got: ${hash}`);
-      return res.status(401).json({ success: false, error: 'Unauthorized' });
+      console.warn(`📝 Expected signature: ${paystackSignature}`);
+      console.warn(`📝 Computed signature: ${hash}`);
+      console.warn(`🔑 Using secret key ending with: ...${process.env.PAYSTACK_SECRET_KEY.slice(-10)}`);
+      return res.status(200).json({ success: false, error: 'Invalid signature' });
     }
 
     const event = req.body.event;
