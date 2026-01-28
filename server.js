@@ -398,24 +398,20 @@ class FirebaseSessionStore extends session.Store {
 app.use(express.static(path.join(__dirname, 'public')));
 
 // Middleware to capture raw body for Paystack webhook signature verification
-app.use((req, res, next) => {
+// CRITICAL: Must be BEFORE any other body parsing middleware
+app.use(express.raw({ type: 'application/json', limit: '10mb' }), (req, res, next) => {
   if (req.path === '/api/paystack/webhook') {
-    let rawBody = '';
-    req.on('data', chunk => {
-      rawBody += chunk.toString('utf8');
-    });
-    req.on('end', () => {
-      req.rawBody = rawBody;
-      try {
-        req.body = JSON.parse(rawBody);
-      } catch (e) {
-        req.body = {};
-      }
-      next();
-    });
-  } else {
-    next();
+    // For webhook, preserve the raw Buffer for signature verification
+    req.rawBody = req.body.toString('utf8');
+    try {
+      req.body = JSON.parse(req.rawBody);
+    } catch (e) {
+      console.error('❌ [WEBHOOK MIDDLEWARE] Failed to parse JSON:', e.message);
+      req.body = {};
+    }
+    console.log(`📥 [WEBHOOK MIDDLEWARE] Raw body captured, length: ${req.rawBody.length}`);
   }
+  next();
 });
 
 app.use(express.json({ limit: '10mb' }));
@@ -2869,17 +2865,26 @@ app.post('/api/paystack/webhook', async (req, res) => {
     
     // Compute HMAC-SHA512 signature
     const crypto = require('crypto');
+    
+    console.log(`🔐 [WEBHOOK] Verifying signature...`);
+    console.log(`   Raw body length: ${bodyForSignature.length}`);
+    console.log(`   Signature from header: ${paystackSignature.substring(0, 20)}...`);
+    console.log(`   Secret key length: ${process.env.PAYSTACK_SECRET_KEY.length}`);
+    
     const hash = crypto
       .createHmac('sha512', process.env.PAYSTACK_SECRET_KEY)
       .update(bodyForSignature)
       .digest('hex');
 
+    console.log(`   Computed signature: ${hash.substring(0, 20)}...`);
+    
     // Verify signature matches
     if (hash !== paystackSignature) {
       console.warn('❌ [WEBHOOK] BLOCKED: Invalid webhook signature from Paystack');
       console.warn(`📝 Expected signature: ${paystackSignature}`);
       console.warn(`📝 Computed signature: ${hash}`);
       console.warn(`🔑 Using secret key ending with: ...${process.env.PAYSTACK_SECRET_KEY.slice(-10)}`);
+      console.warn(`📊 Body sample: ${bodyForSignature.substring(0, 100)}...`);
       return res.status(200).json({ success: false, error: 'Invalid signature' });
     }
 
