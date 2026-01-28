@@ -2885,7 +2885,34 @@ app.post('/api/paystack/webhook', async (req, res) => {
 
       console.log(`⏱️ [WEBHOOK] Processing payment - Reference: ${reference}, User: ${userId}, Amount: ₵${amountInCedis}`);
 
-      // STEP 1: Record payment IMMEDIATELY with 'processing' status to prevent duplicates
+      // STEP 1: VERIFY WITH PAYSTACK API (Double-check security - DatamartGH style)
+      console.log(`🔍 [WEBHOOK] Verifying with Paystack API...`);
+      try {
+        const paystackVerification = await axios.get(
+          `${process.env.PAYSTACK_BASE_URL}/transaction/verify/${reference}`,
+          {
+            headers: {
+              'Authorization': `Bearer ${process.env.PAYSTACK_SECRET_KEY}`
+            },
+            timeout: 5000
+          }
+        );
+
+        const paystackData = paystackVerification.data.data;
+
+        // Verify the transaction is actually successful
+        if (paystackData.status !== 'success') {
+          console.error(`❌ [WEBHOOK] Paystack API confirms status is: ${paystackData.status}`);
+          return res.status(200).json({ success: false, error: 'Paystack verification failed' });
+        }
+
+        console.log(`✅ [WEBHOOK] Paystack API verified - transaction is genuine`);
+      } catch (verifyErr) {
+        console.warn(`⚠️ [WEBHOOK] Paystack verification failed: ${verifyErr.message}`);
+        return res.status(200).json({ success: false, error: 'Paystack API verification timeout' });
+      }
+
+      // STEP 2: Record payment IMMEDIATELY with 'processing' status to prevent duplicates
       const paymentsRef = admin.database().ref('payments');
       const existingPaymentSnapshot = await paymentsRef
         .orderByChild('reference')
@@ -2917,7 +2944,7 @@ app.post('/api/paystack/webhook', async (req, res) => {
 
       console.log(`📌 [WEBHOOK] Payment marked as processing: ${paymentId}`);
 
-      // STEP 2: Get user data
+      // STEP 3: Get user data
       const userRef = admin.database().ref('users/' + userId);
       const userSnapshot = await userRef.once('value');
       
@@ -2932,7 +2959,7 @@ app.post('/api/paystack/webhook', async (req, res) => {
       const currentBalance = userData.walletBalance || 0;
       const newBalance = currentBalance + amountInCedis;
 
-      // STEP 3: CREDIT THE WALLET IMMEDIATELY (Primary operation - must be fast)
+      // STEP 4: CREDIT THE WALLET IMMEDIATELY (Primary operation - must be fast)
       console.log(`💰 [WEBHOOK] CREDITING WALLET: ${userId} | Old Balance: ₵${currentBalance} → New Balance: ₵${newBalance}`);
       
       await userRef.update({
@@ -2948,7 +2975,7 @@ app.post('/api/paystack/webhook', async (req, res) => {
       const walletCreditTime = Date.now() - webhookStartTime;
       console.log(`✅ [WEBHOOK] WALLET CREDITED in ${walletCreditTime}ms for ${userId} - USER IS NOW CREDITED PERMANENTLY IN DATABASE`);
 
-      // STEP 4: Return response immediately to Paystack (wallet is already credited!)
+      // STEP 5: Return response immediately to Paystack (wallet is already credited!)
       // This is the critical response - Paystack knows payment succeeded
       const response = {
         success: true,
@@ -2966,7 +2993,7 @@ app.post('/api/paystack/webhook', async (req, res) => {
       // Send response immediately
       res.status(200).json(response);
 
-      // STEP 5: Handle all background tasks AFTER response is sent (non-blocking)
+      // STEP 6: Handle all background tasks AFTER response is sent (non-blocking)
       // These execute asynchronously and don't affect response time
       setImmediate(async () => {
         try {
