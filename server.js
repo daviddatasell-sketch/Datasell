@@ -2292,6 +2292,38 @@ app.get('/api/verify-payment/:reference', requireAuth, async (req, res) => {
     const { reference } = req.params;
     const userId = req.session.user.uid;
     
+    console.log(`🔍 [VERIFY-PAYMENT] User ${userId} verifying payment: ${reference}`);
+    
+    // CRITICAL: Check if this payment was ALREADY processed via webhook
+    const paymentsRef = admin.database().ref('payments');
+    const existingPaymentSnapshot = await paymentsRef
+      .orderByChild('reference')
+      .equalTo(reference)
+      .once('value');
+    
+    if (existingPaymentSnapshot.exists()) {
+      const existingPayments = existingPaymentSnapshot.val();
+      const existingPayment = Object.values(existingPayments)[0];
+      
+      console.log(`⚠️ [VERIFY-PAYMENT] Payment ${reference} already exists in database`);
+      console.log(`   Status: ${existingPayment.status}`);
+      console.log(`   Source: ${existingPayment.source}`);
+      console.log(`   Wallet Credited: ${existingPayment.walletCredited}`);
+      
+      // If payment was already credited via webhook, don't credit again!
+      if (existingPayment.status === 'success' && existingPayment.walletCredited) {
+        console.log(`✅ [VERIFY-PAYMENT] Payment already credited via webhook - returning success without double-credit`);
+        return res.json({
+          success: true,
+          message: 'Payment already processed',
+          alreadyProcessed: true,
+          amount: existingPayment.amount,
+          reference: reference
+        });
+      }
+    }
+    
+    // Payment hasn't been processed yet, proceed with verification and credit
     const paystackResponse = await axios.get(
       `${process.env.PAYSTACK_BASE_URL}/transaction/verify/${reference}`,
       {
@@ -2326,7 +2358,9 @@ app.get('/api/verify-payment/:reference', requireAuth, async (req, res) => {
         fee: (result.data.amount / 100) - amount,
         reference,
         status: 'success',
+        source: 'manual-verify',
         paystackData: result.data,
+        walletCredited: true,
         timestamp: new Date().toISOString()
       });
 
