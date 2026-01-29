@@ -1769,7 +1769,8 @@ async function loadUsers() {
     
     if (data.success && data.users) {
       allUsersData = data.users;
-      displayUsers(data.users);
+      // Apply default "newest first" sorting
+      sortAndDisplayUsers('newest');
     }
   } catch (error) {
     console.error('Error loading users:', error);
@@ -2115,6 +2116,27 @@ document.addEventListener('DOMContentLoaded', function() {
   
   if (depositsFilter) {
     depositsFilter.addEventListener('change', filterDeposits);
+  }
+
+  // Setup user sort dropdown
+  const userSort = document.getElementById('userSort');
+  if (userSort) {
+    userSort.addEventListener('change', function() {
+      sortAndDisplayUsers(this.value);
+    });
+  }
+
+  // Setup user search
+  const userSearch = document.getElementById('userSearch');
+  if (userSearch) {
+    userSearch.addEventListener('input', function() {
+      const searchValue = this.value.toLowerCase();
+      const rows = document.querySelectorAll('#usersTableBody tr');
+      rows.forEach(row => {
+        const text = row.textContent.toLowerCase();
+        row.style.display = text.includes(searchValue) ? '' : 'none';
+      });
+    });
   }
   
   // Setup Add Package button
