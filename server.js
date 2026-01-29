@@ -1881,6 +1881,8 @@ app.get('/api/admin/deposits', requireAdmin, async (req, res) => {
     const payments = paymentsSnapshot.val() || {};
     const users = usersSnapshot.val() || {};
 
+    console.log(`📊 [ADMIN-DEPOSITS] Found ${Object.keys(payments).length} payment records in database`);
+
     const deposits = Object.entries(payments)
       .map(([id, payment]) => {
         const user = users[payment.userId] || {};
@@ -1897,11 +1899,17 @@ app.get('/api/admin/deposits', requireAdmin, async (req, res) => {
           walletCredited: payment.walletCredited || false
         };
       })
-      .sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
+      .sort((a, b) => {
+        const dateA = a.timestamp ? new Date(a.timestamp).getTime() : 0;
+        const dateB = b.timestamp ? new Date(b.timestamp).getTime() : 0;
+        return dateB - dateA;
+      });
+
+    console.log(`📊 [ADMIN-DEPOSITS] Returning ${deposits.length} deposits to admin. First 3:`, deposits.slice(0, 3));
 
     res.json({ success: true, deposits });
   } catch (error) {
-    console.error('Deposits error:', error);
+    console.error('❌ [ADMIN-DEPOSITS] Deposits error:', error);
     res.status(500).json({ success: false, error: error.message });
   }
 });

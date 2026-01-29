@@ -2186,13 +2186,18 @@ async function loadDeposits() {
     });
     const data = await response.json();
     
+    console.log('📊 Admin deposits response:', data);
+    
     if (data.success && data.deposits) {
+      console.log(`📊 Displaying ${data.deposits.length} deposits`);
       displayDeposits(data.deposits);
     } else {
-      tableBody.innerHTML = '<tr><td colspan="7" style="text-align: center; padding: 20px; color: #ef4444;">Error loading deposits</td></tr>';
+      console.error('❌ Deposits fetch failed:', data);
+      tableBody.innerHTML = '<tr><td colspan="7" style="text-align: center; padding: 20px; color: #ef4444;">Error loading deposits: ' + (data.error || 'Unknown error') + '</td></tr>';
     }
   } catch (error) {
-    console.error('Error loading deposits:', error);
+    console.error('❌ Error loading deposits:', error);
+
     const tableBody = document.getElementById('depositsTableBody');
     tableBody.innerHTML = '<tr><td colspan="7" style="text-align: center; padding: 20px; color: #ef4444;">Failed to load deposits</td></tr>';
   }
