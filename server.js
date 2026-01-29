@@ -2309,10 +2309,13 @@ app.get('/api/verify-payment/:reference', requireAuth, async (req, res) => {
       console.log(`   Status: ${existingPayment.status}`);
       console.log(`   Source: ${existingPayment.source}`);
       console.log(`   Wallet Credited: ${existingPayment.walletCredited}`);
+      console.log(`   Amount: ${existingPayment.amount}`);
       
-      // If payment was already credited via webhook, don't credit again!
-      if (existingPayment.status === 'success' && existingPayment.walletCredited) {
-        console.log(`✅ [VERIFY-PAYMENT] Payment already credited via webhook - returning success without double-credit`);
+      // If payment was already processed (either 'processing' from webhook or 'success'), don't credit again!
+      // The webhook marks it 'processing' first, then updates to 'success' asynchronously
+      // So check for BOTH status values
+      if ((existingPayment.status === 'success' || existingPayment.status === 'processing') && existingPayment.source === 'webhook') {
+        console.log(`✅ [VERIFY-PAYMENT] Payment already processed via webhook - returning success without double-credit`);
         return res.json({
           success: true,
           message: 'Payment already processed',
