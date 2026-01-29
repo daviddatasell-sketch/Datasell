@@ -2475,10 +2475,18 @@ app.get('/payment-callback', async (req, res) => {
       console.log(`   Status: ${existingPayment.status}`);
       console.log(`   Source: ${existingPayment.source}`);
       
-      // If payment was already processed by webhook, don't credit again!
+      // If payment was already processed by webhook, show success without double-credit!
       if ((existingPayment.status === 'success' || existingPayment.status === 'processing') && existingPayment.source === 'webhook') {
-        console.log(`✅ [CALLBACK] Payment already credited via webhook - returning redirect without double-credit`);
-        return res.redirect('/payment-confirmation');
+        console.log(`✅ [CALLBACK] Payment already credited via webhook - showing success page without double-credit`);
+        // Store in session for success page
+        req.session.paymentConfirmation = {
+          amount: amount,
+          userId: userId,
+          reference: reference,
+          timestamp: new Date().toISOString(),
+          source: 'webhook_already_processed'
+        };
+        return res.redirect(`/payment-confirmation?status=success&amount=${amount}`);
       }
     }
 
@@ -2511,7 +2519,7 @@ app.get('/payment-callback', async (req, res) => {
 
     // SEND REDIRECT IMMEDIATELY - ULTRA-SHARP (0.1ms delay)
     console.log(`📤 [CALLBACK] SENDING REDIRECT INSTANTLY - All operations running async in background`);
-    res.redirect('/payment-confirmation');
+    res.redirect(`/payment-confirmation?status=success&amount=${amount}`);
 
     // FIRE-AND-FORGET SMS - Send SMS immediately without any awaits
     // This runs FIRST and doesn't block anything
@@ -2720,11 +2728,11 @@ app.get('/payment-confirmation', (req, res) => {
           <div class="amount"><span class="currency">₵</span>${amount.toFixed(2)}</div>
           <p>Your funds are now available to use immediately.</p>
           <a href="/dashboard" class="btn btn-continue">Return to Homepage</a>
-          <div class="timer">Redirecting in <span id="countdown">5</span> seconds...</div>
+          <div class="timer">Redirecting in <span id="countdown">3</span> seconds...</div>
         </div>
         
         <script>
-          let count = 5;
+          let count = 3;
           const interval = setInterval(() => {
             count--;
             document.getElementById('countdown').textContent = count;
