@@ -2460,6 +2460,28 @@ app.get('/payment-callback', async (req, res) => {
 
     console.log(`✅ [CALLBACK] Paystack verified success for ref: ${reference} | User: ${userId} | Amount: ₵${amount}`);
 
+    // CRITICAL: Check if payment already processed by webhook
+    const paymentsRef = admin.database().ref('payments');
+    const existingPaymentSnapshot = await paymentsRef
+      .orderByChild('reference')
+      .equalTo(reference)
+      .once('value');
+
+    if (existingPaymentSnapshot.exists()) {
+      const existingPayments = existingPaymentSnapshot.val();
+      const existingPayment = Object.values(existingPayments)[0];
+      
+      console.log(`⚠️ [CALLBACK] Payment ${reference} already exists in database`);
+      console.log(`   Status: ${existingPayment.status}`);
+      console.log(`   Source: ${existingPayment.source}`);
+      
+      // If payment was already processed by webhook, don't credit again!
+      if ((existingPayment.status === 'success' || existingPayment.status === 'processing') && existingPayment.source === 'webhook') {
+        console.log(`✅ [CALLBACK] Payment already credited via webhook - returning redirect without double-credit`);
+        return res.redirect('/payment-confirmation');
+      }
+    }
+
     // STEP 2: Credit wallet IMMEDIATELY (this is the critical operation)
     const userRef = admin.database().ref('users/' + userId);
     
