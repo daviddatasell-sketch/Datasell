@@ -1337,15 +1337,14 @@
                                     <th>Email</th>
                                     <th>Phone</th>
                                     <th>Balance</th>
-                                    <th>Status</th>
-                                    <th>Role</th>
+                                    <th>Date Joined</th>
                                     <th>Pricing Tier</th>
                                     <th>Actions</th>
                                 </tr>
                             </thead>
                             <tbody id="usersTableBody">
                                 <tr>
-                                    <td colspan="9" class="text-center">Loading users...</td>
+                                    <td colspan="8" class="text-center">Loading users...</td>
                                 </tr>
                             </tbody>
                         </table>
@@ -1779,7 +1778,7 @@ async function loadUsers() {
 
 function displayUsers(users) {
   if (!users || users.length === 0) {
-    document.getElementById('usersTableBody').innerHTML = '<tr><td colspan="9">No users found</td></tr>';
+    document.getElementById('usersTableBody').innerHTML = '<tr><td colspan="8" style="text-align: center; padding: 20px;">No users found</td></tr>';
     return;
   }
   
@@ -1789,6 +1788,7 @@ function displayUsers(users) {
       const tierName = (user.pricingGroup || 'regular').toUpperCase();
       const tierColor = user.pricingGroup === 'vip' ? '#ef4444' : user.pricingGroup === 'premium' ? '#f59e0b' : '#6b7280';
       const tierDisplay = user.pricingGroup === 'vip' ? 'VIP (10%)' : user.pricingGroup === 'premium' ? 'Premium (5%)' : 'Regular (0%)';
+      const dateJoined = user.createdAt ? new Date(user.createdAt).toLocaleDateString() : 'N/A';
       
       return `
       <tr>
@@ -1797,17 +1797,14 @@ function displayUsers(users) {
         <td>${user.email || 'N/A'}</td>
         <td>${user.phone || 'N/A'}</td>
         <td>₵${parseFloat(user.walletBalance || 0).toFixed(2)}</td>
-        <td><span style="color: ${user.status === 'suspended' ? '#ef4444' : '#10b981'}">${user.status || 'active'}</span></td>
-        <td>${user.role === 'admin' ? 'Admin' : 'User'}</td>
-        <td>
-          <span style="background: ${tierColor}; color: white; padding: 4px 8px; border-radius: 4px; font-size: 12px; font-weight: 600;">
+        <td>${dateJoined}</td>
+        <td style="text-align: center;">
+          <button onclick="setPricingTier('${user.uid}')" style="background: ${tierColor}; color: white; padding: 6px 12px; border: none; border-radius: 4px; cursor: pointer; font-size: 12px; font-weight: 600;">
             ${tierDisplay}
-          </span>
+          </button>
         </td>
         <td>
-          <button onclick="editUser('${user.uid}')" style="padding: 4px 8px; margin-right: 4px; background: #3b82f6; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 12px;">Edit</button>
-          <button onclick="setPricingTier('${user.uid}')" style="padding: 4px 8px; margin-right: 4px; background: #8b5cf6; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 12px;">Tier</button>
-          <button onclick="manageUserFunds('${user.uid}')" style="padding: 4px 8px; background: #10b981; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 12px;">Funds</button>
+          <button onclick="manageUserFunds('${user.uid}')" style="padding: 6px 12px; background: #10b981; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 12px; font-weight: 600;">Funds</button>
         </td>
       </tr>
     `}).join('');
@@ -1934,17 +1931,10 @@ async function logout() {
 }
 
 // Edit User
-function editUser(userId) {
-  console.log('Edit user:', userId);
-  // Implementation would go here
-  Swal.fire('Info', 'Edit user feature coming soon', 'info');
-}
+// Edit User - REMOVED (Not used in table anymore)
 
 // Manage User Funds
-function manageUserFunds(userId) {
-  console.log('Manage funds for user:', userId);
-  Swal.fire('Info', 'Manage funds feature coming soon', 'info');
-}
+// (Implementation moved below with real functionality)
 
 // Set User Pricing Tier
 async function setPricingTier(userId) {
@@ -2327,21 +2317,42 @@ function sortAndDisplayUsers(sortBy) {
   // Redraw the table with sorted data
   const tbody = document.getElementById('usersTableBody');
   if (tbody) {
-    tbody.innerHTML = sorted.map(user => `
+    if (!sorted || sorted.length === 0) {
+      tbody.innerHTML = '<tr><td colspan="8" style="text-align: center; padding: 20px;">No users found</td></tr>';
+      return;
+    }
+
+    const tierColor = (pricingGroup) => {
+      return pricingGroup === 'vip' ? '#ef4444' : pricingGroup === 'premium' ? '#f59e0b' : '#6b7280';
+    };
+
+    const tierDisplay = (pricingGroup) => {
+      return pricingGroup === 'vip' ? 'VIP (10%)' : pricingGroup === 'premium' ? 'Premium (5%)' : 'Regular (0%)';
+    };
+
+    tbody.innerHTML = sorted.map(user => {
+      const dateJoined = user.createdAt ? new Date(user.createdAt).toLocaleDateString() : 'N/A';
+      const color = tierColor(user.pricingGroup || 'regular');
+      const display = tierDisplay(user.pricingGroup || 'regular');
+
+      return `
       <tr>
-        <td>${user.uid || 'N/A'}</td>
+        <td>${user.uid.substring(0, 8)}...</td>
         <td>${(user.firstName || '') + ' ' + (user.lastName || '')}</td>
         <td>${user.email || 'N/A'}</td>
         <td>${user.phone || 'N/A'}</td>
         <td>₵${parseFloat(user.walletBalance || 0).toFixed(2)}</td>
-        <td><span style="color: ${user.status === 'suspended' ? '#ef4444' : '#10b981'}">${user.status || 'active'}</span></td>
-        <td>${user.role === 'admin' ? 'Admin' : 'User'}</td>
+        <td>${dateJoined}</td>
+        <td style="text-align: center;">
+          <button onclick="setPricingTier('${user.uid}')" style="background: ${color}; color: white; padding: 6px 12px; border: none; border-radius: 4px; cursor: pointer; font-size: 12px; font-weight: 600;">
+            ${display}
+          </button>
+        </td>
         <td>
-          <button onclick="editUser('${user.uid}')" style="padding: 4px 8px; margin-right: 4px; background: #3b82f6; color: white; border: none; border-radius: 4px; cursor: pointer;">Edit</button>
-          <button onclick="manageUserFunds('${user.uid}')" style="padding: 4px 8px; background: #10b981; color: white; border: none; border-radius: 4px; cursor: pointer;">Funds</button>
+          <button onclick="manageUserFunds('${user.uid}')" style="padding: 6px 12px; background: #10b981; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 12px; font-weight: 600;">Funds</button>
         </td>
       </tr>
-    `).join('');
+    `}).join('');
   }
 }
 
