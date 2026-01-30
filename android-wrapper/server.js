@@ -1296,7 +1296,7 @@ app.post('/api/initialize-payment', requireAuth, async (req, res) => {
     }
 
     // Calculate Paystack amount (add 3% fee)
-    const paystackAmount = Math.ceil(amount * 100 * 1.06);
+    const paystackAmount = Math.ceil(amount * 100 * 1.03);
 
     const paystackResponse = await axios.post(
       `${process.env.PAYSTACK_BASE_URL}/transaction/initialize`,
