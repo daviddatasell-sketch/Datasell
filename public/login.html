@@ -123,8 +123,9 @@ body.auth-page {
 /* Mobile Responsive Styles */
 @media (max-width: 768px) {
     body.auth-page {
-        background: linear-gradient(135deg, #6c63ff 0%, #3b82f6 100%);
-        background-attachment: scroll;
+        background: url('/images/DATASELL-BACK.jpg') no-repeat center center fixed;
+        background-size: cover;
+        background-attachment: fixed;
         padding: 0.5rem;
     }
     
@@ -144,7 +145,9 @@ body.auth-page {
 @media (max-width: 480px) {
     body.auth-page {
         padding: 0;
-        background: linear-gradient(135deg, #6c63ff 0%, #3b82f6 100%);
+        background: url('/images/DATASELL-BACK.jpg') no-repeat center center fixed;
+        background-size: cover;
+        background-attachment: fixed;
     }
     
     .auth-card {
@@ -776,6 +779,8 @@ import {
   getAuth, 
   GoogleAuthProvider, 
   signInWithPopup,
+  signInWithRedirect,
+  getRedirectResult,
   onAuthStateChanged
 } from "https://www.gstatic.com/firebasejs/9.23.0/firebase-auth.js";
 
@@ -802,6 +807,18 @@ async function initializeFirebaseAuth() {
   const auth = getAuth(app);
   const googleProvider = new GoogleAuthProvider();
 
+  // Check for redirect result (for iOS redirect flow)
+  try {
+    const result = await getRedirectResult(auth);
+    if (result && result.user) {
+      console.log("✅ Redirect sign-in successful:", result.user.email);
+      await handleGoogleSignInSuccess(result.user, '/api/google-login');
+      return;
+    }
+  } catch (error) {
+    console.error("Redirect result error:", error);
+  }
+
   // NOTE: Removed auto-redirect on login page to prevent loops
   // User must explicitly click "Sign in with Google" button
   // Only redirect after successful backend authentication
@@ -825,55 +842,22 @@ async function initializeFirebaseAuth() {
       btn.innerHTML = '<i class="fas fa-spinner fa-spin me-2"></i>Signing in...';
       btn.disabled = true;
 
-      // Detect if on mobile device
-      const isMobile = /iPhone|iPad|iPod|Android|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+      // Detect if on iOS (Safari is strict about popups on iOS)
+      const isIOS = /iPhone|iPad|iPod/.test(navigator.userAgent);
+      const isSafari = /Safari/.test(navigator.userAgent) && !/Chrome/.test(navigator.userAgent);
       
-      // Configure Google Sign-in for better mobile experience
-      const googleSignInOptions = {
-        prompt: 'select_account' // Always show account selector on mobile
-      };
+      console.log("Device: iOS=" + isIOS + ", Safari=" + isSafari);
       
-      const result = await signInWithPopup(auth, googleProvider);
-      const user = result.user;
-      
-      console.log("Google login successful:", user.email);
-      console.log("Google user displayName:", user.displayName);
-      console.log("Google user metadata:", user.metadata);
-      console.log("Is mobile:", isMobile);
-      
-      // Get the actual display name from Google profile
-      // user.displayName should be the name from Google account
-      let displayName = user.displayName || user.email;
-      console.log("Final displayName to send:", displayName);
-      
-      // Get ID token for backend authentication
-      const idToken = await user.getIdToken();
-      
-      // Send token to backend to create session
-      const response = await fetch('/api/google-login', {
-        method: 'POST',
-        credentials: 'include',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ 
-          idToken: idToken,
-          email: user.email,
-          uid: user.uid,
-          displayName: displayName, // Pass the actual Google account name
-          photoURL: user.photoURL
-        })
-      });
-      
-      const data = await response.json();
-      
-      if (data.success) {
-        console.log("Backend authentication successful, redirecting to dashboard");
-        notyf.success("✅ Signed in successfully!");
-        // Redirect immediately without delay
-        window.location.href = '/dashboard';
+      // Use redirect flow on iOS Safari (popups are blocked)
+      // Use popup flow on other devices (better UX)
+      if (isIOS || (isSafari && isIOS)) {
+        console.log("📱 Using redirect flow for iOS Safari");
+        await signInWithRedirect(auth, googleProvider);
+        // Function continues in getRedirectResult handler above
       } else {
-        notyf.error(data.error || 'Backend authentication failed');
-        btn.innerHTML = originalText;
-        btn.disabled = false;
+        console.log("🖥️  Using popup flow for desktop/Android");
+        const result = await signInWithPopup(auth, googleProvider);
+        await handleGoogleSignInSuccess(result.user, '/api/google-login');
       }
     } catch (error) {
       console.error("Google sign-in error:", error);
@@ -890,6 +874,40 @@ async function initializeFirebaseAuth() {
       btn.disabled = false;
     }
   });
+}
+
+// Separate function to handle Google sign-in success (used for both popup and redirect)
+async function handleGoogleSignInSuccess(user, backendUrl) {
+  let displayName = user.displayName || user.email;
+  console.log("Google login successful:", user.email);
+  console.log("Google user displayName:", displayName);
+  
+  // Get ID token for backend authentication
+  const idToken = await user.getIdToken();
+  
+  // Send token to backend to create session
+  const response = await fetch(backendUrl, {
+    method: 'POST',
+    credentials: 'include',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ 
+      idToken: idToken,
+      email: user.email,
+      uid: user.uid,
+      displayName: displayName,
+      photoURL: user.photoURL
+    })
+  });
+  
+  const data = await response.json();
+  
+  if (data.success) {
+    console.log("✅ Backend authentication successful, redirecting to dashboard");
+    notyf.success("✅ Signed in successfully!");
+    window.location.href = '/dashboard';
+  } else {
+    notyf.error(data.error || 'Backend authentication failed');
+  }
 }
 
 // Start initialization
