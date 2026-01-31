@@ -924,7 +924,41 @@ body {
     </style>
 </head>
 <body class="mobile-layout">
-    <!-- Header -->
+    <!-- Firebase Auth Guard (prevent access without authentication) -->
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/9.23.0/firebase-app.js";
+        import { getAuth, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/9.23.0/firebase-auth.js";
+
+        const firebaseConfig = window.__FIREBASE_CONFIG || {
+            apiKey: "AIzaSyC_placeholder",
+            authDomain: "datasell-ae9c0.firebaseapp.com",
+            projectId: "datasell-ae9c0"
+        };
+
+        const app = initializeApp(firebaseConfig);
+        const auth = getAuth(app);
+
+        // Check if user is authenticated via Firebase
+        onAuthStateChanged(auth, async (user) => {
+            if (!user) {
+                // Not authenticated via Firebase, check traditional session
+                try {
+                    const response = await fetch('/api/check-auth', { credentials: 'include' });
+                    const data = await response.json();
+                    if (!data.success || !data.authenticated) {
+                        console.warn("User not authenticated, redirecting to login");
+                        window.location.href = '/login';
+                    }
+                } catch (error) {
+                    console.error("Auth check error:", error);
+                    window.location.href = '/login';
+                }
+            } else {
+                console.log("User authenticated:", user.email);
+            }
+        });
+    </script>
+    
     <header class="app-header" style="padding: 0.5rem 0; border-bottom: 1px solid #e9ecef; background: white;">
         <div class="container px-2">
             <div class="d-flex justify-content-between align-items-center" style="min-height: 44px;">

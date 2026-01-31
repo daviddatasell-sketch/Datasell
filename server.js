@@ -887,7 +887,8 @@ app.post('/api/signup', async (req, res) => {
       pricingGroup: 'regular',
       suspended: false,
       lastLogin: null,
-      authMethod: authMethod // Track which auth system is used
+      authMethod: authMethod, // Track which auth system is used
+      signInMethod: 'email' // Track sign-in method (email vs google)
     });
 
     // Log registration
@@ -1182,6 +1183,129 @@ app.post('/api/login', async (req, res) => {
     res.status(401).json({ 
       success: false, 
       error: 'Invalid credentials' 
+    });
+  }
+});
+
+// Google Sign-In Authentication Endpoint
+app.post('/api/google-login', async (req, res) => {
+  try {
+    const { idToken, email, uid, displayName, photoURL } = req.body;
+    
+    console.log('🔐 [GOOGLE LOGIN] Request received');
+    console.log('🔐 [GOOGLE LOGIN] Email:', email, 'UID:', uid, 'DisplayName:', displayName);
+    
+    if (!idToken || !email || !uid) {
+      console.log('❌ Missing required fields for Google login');
+      return res.status(400).json({
+        success: false,
+        error: 'Missing required fields: idToken, email, uid'
+      });
+    }
+
+    // Look up or create user in database
+    const usersSnapshot = await admin.database().ref('users').once('value');
+    const users = usersSnapshot.val() || {};
+    let userData = null;
+    let userId = null;
+
+    // Search for existing user by email
+    for (const [uid_key, user] of Object.entries(users)) {
+      if (user.email && user.email.toLowerCase() === email.toLowerCase()) {
+        userData = user;
+        userId = uid_key;
+        console.log('✅ Found existing user with email:', email, 'UID:', userId);
+        break;
+      }
+    }
+
+    // If no existing user, create one with Firebase UID as the key
+    if (!userId) {
+      userId = uid;
+      
+      // Parse displayName if available
+      let firstName = 'User';
+      let lastName = '';
+      
+      // IMPORTANT: Only use displayName from Google, never fall back to email prefix
+      if (displayName && displayName.trim() !== '' && displayName.toLowerCase() !== email) {
+        // We have a real Google account display name (e.g., "Emmanuel Fotsi")
+        const parts = displayName.trim().split(' ');
+        firstName = parts[0] || 'User';
+        lastName = parts.slice(1).join(' ') || '';
+        console.log('✅ Using Google account name: firstName:', firstName, 'lastName:', lastName);
+      } else {
+        // displayName is missing, empty, or is just the email
+        console.warn('⚠️ No valid Google displayName provided, using default');
+        firstName = 'User';
+        lastName = '';
+      }
+      
+      userData = {
+        uid: uid,
+        email: email,
+        firstName: firstName,
+        lastName: lastName,
+        displayName: `${firstName} ${lastName}`.trim(),
+        photoURL: photoURL || null,
+        walletBalance: 0,
+        createdAt: new Date().toISOString(),
+        lastLogin: new Date().toISOString(),
+        isAdmin: false,
+        pricingGroup: 'regular',
+        suspended: false,
+        signInMethod: 'google' // Track sign-in method for admin reference
+      };
+      
+      console.log('📝 Creating new Google user in database:', { uid: userId, firstName, lastName, displayName: userData.displayName, signInMethod: 'google' });
+      await admin.database().ref('users/' + userId).set(userData);
+    } else {
+      // Update last login for existing user
+      console.log('🔄 Updating lastLogin for user:', userId);
+      await admin.database().ref('users/' + userId + '/lastLogin').set(new Date().toISOString());
+    }
+
+    // Set user session
+    req.session.user = {
+      uid: userId,
+      email: userData.email,
+      displayName: userData.displayName || `${userData.firstName || ''} ${userData.lastName || ''}`.trim(),
+      photoURL: userData.photoURL || null,
+      isAdmin: userData.isAdmin || false
+    };
+
+    // Initialize activity tracker for session timeout
+    req.session.lastActivity = Date.now();
+
+    // Set session cookie to 24 hours for Google login (no remember-me option)
+    try {
+      req.session.cookie.maxAge = 24 * 60 * 60 * 1000; // 24 hours
+    } catch (e) {
+      console.warn('Could not set session cookie maxAge:', e.message);
+    }
+
+    console.log('✅ Session set for Google login:', { uid: req.session.user.uid, email, displayName: req.session.user.displayName, sessionID: req.sessionID });
+
+    // Save session explicitly before returning response
+    return req.session.save((err) => {
+      if (err) {
+        console.error('❌ Session save error:', err);
+        return res.status(500).json({ success: false, error: 'Session save failed' });
+      }
+      
+      console.log('✅ Google login session saved successfully');
+      return res.json({
+        success: true,
+        message: 'Google authentication successful',
+        user: req.session.user,
+        sessionID: req.sessionID
+      });
+    });
+  } catch (error) {
+    console.error('❌ Google login error:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Google authentication failed: ' + error.message
     });
   }
 });

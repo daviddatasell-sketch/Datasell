@@ -56,6 +56,9 @@
     <!-- Canonical Tag -->
     <link rel="canonical" href="https://www.datasell.store">
     
+    <!-- Firebase Configuration (MUST load before auth scripts) -->
+    <script src="/config.js"></script>
+    
     <link rel="stylesheet" href="/css/responsive.css">
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
@@ -117,6 +120,50 @@ body.auth-page {
     flex-direction: column;
 }
 
+/* Mobile Responsive Styles */
+@media (max-width: 768px) {
+    body.auth-page {
+        background: linear-gradient(135deg, #6c63ff 0%, #3b82f6 100%);
+        background-attachment: scroll;
+        padding: 0.5rem;
+    }
+    
+    .auth-card {
+        padding: 1.5rem 1.25rem 2.5rem 1.25rem;
+        min-height: auto;
+        border-radius: 16px;
+        box-shadow: 0 4px 16px rgba(0, 0, 0, 0.15);
+    }
+    
+    .auth-container {
+        max-width: 95%;
+        padding: 0;
+    }
+}
+
+@media (max-width: 480px) {
+    body.auth-page {
+        padding: 0;
+        background: linear-gradient(135deg, #6c63ff 0%, #3b82f6 100%);
+    }
+    
+    .auth-card {
+        padding: 1.25rem 1rem 2rem 1rem;
+        border-radius: 16px;
+        width: 100%;
+        max-width: 100%;
+        margin: 0;
+        min-height: auto;
+    }
+    
+    .auth-container {
+        max-width: 100%;
+        width: 100%;
+        padding: 0;
+        margin: 0;
+    }
+}
+
 .auth-header {
     margin-bottom: 2rem;
     margin-top: 0;
@@ -151,6 +198,73 @@ body.auth-page {
     font-weight: 800;
     background: linear-gradient(90deg, #6c63ff 30%, #3b82f6 70%);
     -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+    text-fill-color: transparent;
+    letter-spacing: 1.5px;
+    margin-bottom: 0.3rem;
+    margin-top: 0;
+}
+
+.auth-subtitle-datasell {
+    font-size: 1rem;
+    font-weight: 500;
+    background: linear-gradient(90deg, #6c63ff 30%, #3b82f6 70%);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+    text-fill-color: transparent;
+    letter-spacing: 0.3px;
+}
+
+/* Mobile Header Responsive Styles */
+@media (max-width: 768px) {
+    .auth-header {
+        margin-bottom: 1.5rem;
+    }
+    
+    .auth-logo {
+        height: 40px;
+        margin-bottom: 0.75rem;
+    }
+    
+    .auth-title-datasell {
+        font-size: 1.5rem;
+        letter-spacing: 1px;
+    }
+    
+    .auth-subtitle-datasell {
+        font-size: 0.9rem;
+    }
+    
+    .auth-title {
+        font-size: 1.25rem;
+    }
+    
+    .auth-subtitle {
+        font-size: 0.9rem;
+    }
+}
+
+@media (max-width: 480px) {
+    .auth-header {
+        margin-bottom: 1.25rem;
+    }
+    
+    .auth-logo {
+        height: 36px;
+        margin-bottom: 0.5rem;
+    }
+    
+    .auth-title-datasell {
+        font-size: 1.3rem;
+        letter-spacing: 0.5px;
+    }
+    
+    .auth-subtitle-datasell {
+        font-size: 0.8rem;
+    }
+}
     -webkit-text-fill-color: transparent;
     background-clip: text;
     text-fill-color: transparent;
@@ -214,6 +328,38 @@ body.auth-page {
     outline: none;
 }
 
+/* Mobile Form Input Enhancements */
+@media (max-width: 768px) {
+    .auth-form .input-group {
+        margin-bottom: 1rem;
+    }
+    
+    .auth-form .form-control {
+        border-radius: 8px;
+        font-size: 16px;
+    }
+    
+    .auth-form .form-control::placeholder {
+        font-size: 14px;
+    }
+}
+
+@media (max-width: 480px) {
+    .auth-form .input-group {
+        margin-bottom: 1rem;
+    }
+    
+    .auth-form .form-control {
+        font-size: 16px;
+        padding: 0.75rem 0.75rem;
+    }
+    
+    .auth-form .input-group-text {
+        margin-right: 10px;
+        font-size: 0.9rem;
+    }
+}
+
 .auth-btn {
     background-color: var(--primary-color);
     border: none;
@@ -228,6 +374,13 @@ body.auth-page {
     height: auto;
     color: white;
     cursor: pointer;
+    min-height: 48px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    touch-action: manipulation;
+    -webkit-user-select: none;
+    user-select: none;
 }
 
 .auth-btn:hover:not(:disabled) {
@@ -236,10 +389,50 @@ body.auth-page {
     box-shadow: 0 8px 16px rgba(108, 99, 255, 0.3);
 }
 
+.auth-btn:active:not(:disabled) {
+    transform: translateY(0);
+}
+
 .auth-btn:disabled {
     background-color: #cbd5e0;
     cursor: not-allowed;
     transform: none;
+}
+
+/* Mobile Button Enhancements */
+@media (max-width: 768px) {
+    .auth-btn {
+        padding: 1rem 1.5rem;
+        font-size: 0.95rem;
+        min-height: 50px;
+    }
+    
+    .auth-btn:hover:not(:disabled) {
+        transform: none;
+    }
+    
+    .auth-form .form-control {
+        font-size: 16px;
+        padding: 0.75rem 1rem;
+    }
+    
+    .auth-form .form-label {
+        font-size: 0.9rem;
+    }
+}
+
+@media (max-width: 480px) {
+    .auth-btn {
+        padding: 1rem 1.25rem;
+        font-size: 0.9rem;
+        min-height: 50px;
+    }
+    
+    .auth-form .form-control {
+        font-size: 16px;
+        padding: 0.75rem 1rem;
+        border-radius: 8px;
+    }
 }
 
 
@@ -254,6 +447,71 @@ body.auth-page {
     font-weight: 500;
     transition: var(--transition);
     font-size: 0.85rem;
+}
+
+.auth-link:hover {
+    text-decoration: underline;
+}
+
+/* Google Sign-in Button Mobile Specific Styles */
+#googleLogin {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+}
+
+#googleLogin svg {
+    width: 20px;
+    height: 20px;
+    flex-shrink: 0;
+}
+
+@media (max-width: 768px) {
+    #googleLogin {
+        font-size: 0.9rem;
+        padding: 1rem 1.5rem;
+    }
+    
+    #googleLogin svg {
+        width: 18px;
+        height: 18px;
+    }
+}
+
+@media (max-width: 480px) {
+    #googleLogin {
+        font-size: 0.85rem;
+        padding: 0.9rem 1rem;
+        min-height: 50px;
+        gap: 0.4rem;
+    }
+    
+    #googleLogin svg {
+        width: 16px;
+        height: 16px;
+    }
+}
+
+/* Text and helper text mobile responsive */
+@media (max-width: 768px) {
+    .text-muted {
+        font-size: 0.8rem !important;
+    }
+    
+    .form-check-label {
+        font-size: 0.9rem;
+    }
+}
+
+@media (max-width: 480px) {
+    .text-muted {
+        font-size: 0.75rem !important;
+    }
+    
+    .form-check {
+        margin-bottom: 0.5rem;
+    }
 }
 
 .auth-link:hover {
@@ -474,6 +732,20 @@ body.auth-page {
                     <i class="fas fa-sign-in-alt me-2"></i>Sign In
                 </button>
 
+                <div class="text-center my-3">
+                    <p class="text-muted" style="font-size: 0.85rem;">Or continue with</p>
+                </div>
+
+                <button type="button" id="googleLogin" class="btn auth-btn" style="background-color: #fff; color: #333; border: 1px solid #ddd; margin-bottom: 1rem;">
+                    <svg style="width: 20px; height: 20px; margin-right: 0.5rem; vertical-align: middle;" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                        <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>
+                        <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/>
+                        <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"/>
+                        <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/>
+                    </svg>
+                    Sign in with Google
+                </button>
+
                 <div class="text-center">
                     <p>Don't have an account? <a href="/signup" class="auth-link">Sign up</a></p>
                 </div>
@@ -497,6 +769,134 @@ body.auth-page {
         justify-content: center;
     }
 </style>
+
+<script type="module">
+import { initializeApp } from "https://www.gstatic.com/firebasejs/9.23.0/firebase-app.js";
+import { 
+  getAuth, 
+  GoogleAuthProvider, 
+  signInWithPopup,
+  onAuthStateChanged
+} from "https://www.gstatic.com/firebasejs/9.23.0/firebase-auth.js";
+
+// Wait for Firebase config to be available from server
+async function waitForConfig() {
+  let attempts = 0;
+  while (!window.__FIREBASE_CONFIG && attempts < 50) {
+    await new Promise(resolve => setTimeout(resolve, 100));
+    attempts++;
+  }
+  return window.__FIREBASE_CONFIG;
+}
+
+// Initialize Firebase
+async function initializeFirebaseAuth() {
+  const config = await waitForConfig();
+  
+  if (!config || !config.apiKey) {
+    console.error("Firebase config not available", config);
+    return;
+  }
+
+  const app = initializeApp(config);
+  const auth = getAuth(app);
+  const googleProvider = new GoogleAuthProvider();
+
+  // NOTE: Removed auto-redirect on login page to prevent loops
+  // User must explicitly click "Sign in with Google" button
+  // Only redirect after successful backend authentication
+
+  // Google Sign-in Button Handler
+  const googleBtn = document.getElementById("googleLogin");
+  if (!googleBtn) {
+    console.error("Google login button not found");
+    return;
+  }
+
+  googleBtn.addEventListener("click", async (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    
+    const btn = e.target.closest("button");
+    const originalText = btn.innerHTML;
+    const originalDisabled = btn.disabled;
+    
+    try {
+      btn.innerHTML = '<i class="fas fa-spinner fa-spin me-2"></i>Signing in...';
+      btn.disabled = true;
+
+      // Detect if on mobile device
+      const isMobile = /iPhone|iPad|iPod|Android|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+      
+      // Configure Google Sign-in for better mobile experience
+      const googleSignInOptions = {
+        prompt: 'select_account' // Always show account selector on mobile
+      };
+      
+      const result = await signInWithPopup(auth, googleProvider);
+      const user = result.user;
+      
+      console.log("Google login successful:", user.email);
+      console.log("Google user displayName:", user.displayName);
+      console.log("Google user metadata:", user.metadata);
+      console.log("Is mobile:", isMobile);
+      
+      // Get the actual display name from Google profile
+      // user.displayName should be the name from Google account
+      let displayName = user.displayName || user.email;
+      console.log("Final displayName to send:", displayName);
+      
+      // Get ID token for backend authentication
+      const idToken = await user.getIdToken();
+      
+      // Send token to backend to create session
+      const response = await fetch('/api/google-login', {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ 
+          idToken: idToken,
+          email: user.email,
+          uid: user.uid,
+          displayName: displayName, // Pass the actual Google account name
+          photoURL: user.photoURL
+        })
+      });
+      
+      const data = await response.json();
+      
+      if (data.success) {
+        console.log("Backend authentication successful, redirecting to dashboard");
+        notyf.success("✅ Signed in successfully!");
+        // Redirect immediately without delay
+        window.location.href = '/dashboard';
+      } else {
+        notyf.error(data.error || 'Backend authentication failed');
+        btn.innerHTML = originalText;
+        btn.disabled = false;
+      }
+    } catch (error) {
+      console.error("Google sign-in error:", error);
+      
+      if (error.code === 'auth/popup-blocked') {
+        notyf.error('Popup was blocked. Please allow popups for this site.');
+      } else if (error.code === 'auth/cancelled-popup-request') {
+        console.log('Sign-in cancelled by user');
+      } else {
+        notyf.error(error.message || 'Google sign-in failed');
+      }
+      
+      btn.innerHTML = originalText;
+      btn.disabled = false;
+    }
+  });
+}
+
+// Start initialization
+initializeFirebaseAuth().catch(error => {
+  console.error("Firebase initialization failed:", error);
+});
+</script>
 
 <script>
 const notyf = new Notyf({
@@ -559,7 +959,7 @@ document.getElementById('loginForm').addEventListener('submit', async (e) => {
     }
 });
 
-// Check if user is already authenticated
+// Check if user is already authenticated (traditional session-based)
 async function checkAuth() {
     try {
         const response = await fetch('/api/check-auth', { credentials: 'include' });
