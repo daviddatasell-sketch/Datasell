@@ -1,0 +1,2951 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Admin Panel - DataSell</title>
+    <link rel="stylesheet" href="/css/responsive.css">
+    
+    <!-- Font Awesome -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <!-- SweetAlert2 -->
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/sweetalert2@11/dist/sweetalert2.min.css">
+    
+    <style>
+        :root {
+            --primary-color: #2563eb;
+            --primary-hover: #1d4ed8;
+            --bg-color: #ffffff;
+            --sidebar-bg: #f8fafc;
+            --text-color: #1f2937;
+            --text-muted: #6b7280;
+            --border-color: #e5e7eb;
+            --card-bg: #ffffff;
+            --hover-bg: #f3f4f6;
+            --success-color: #10b981;
+            --warning-color: #f59e0b;
+            --danger-color: #ef4444;
+            --info-color: #3b82f6;
+            --shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.1), 0 1px 2px 0 rgba(0, 0, 0, 0.06);
+            --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+        }
+
+        [data-theme="dark"] {
+            --primary-color: #3b82f6;
+            --primary-hover: #2563eb;
+            --bg-color: #111827;
+            --sidebar-bg: #1f2937;
+            --text-color: #f9fafb;
+            --text-muted: #d1d5db;
+            --border-color: #374151;
+            --card-bg: #1f2937;
+            --hover-bg: #374151;
+            --shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.3), 0 1px 2px 0 rgba(0, 0, 0, 0.2);
+            --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.3), 0 4px 6px -2px rgba(0, 0, 0, 0.2);
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            transition: background-color 0.3s, color 0.3s, border-color 0.3s;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            background-color: var(--bg-color);
+            color: var(--text-color);
+            line-height: 1.6;
+        }
+
+        .admin-container {
+            display: flex;
+            min-height: 100vh;
+        }
+
+        /* Sidebar Styles */
+        .sidebar {
+            width: 260px;
+            background: var(--sidebar-bg);
+            border-right: 1px solid var(--border-color);
+            padding: 1.5rem 0;
+            position: fixed;
+            height: 100vh;
+            overflow-y: auto;
+            z-index: 1000;
+            transition: transform 0.28s ease, box-shadow 0.28s ease;
+            transform: translateX(-100%); /* hidden by default */
+            box-shadow: none;
+        }
+
+        .sidebar-header {
+            padding: 0 1.5rem 1.5rem;
+            border-bottom: 1px solid var(--border-color);
+            margin-bottom: 1rem;
+        }
+
+        .sidebar-header h1 {
+            font-size: 1.5rem;
+            font-weight: 700;
+            color: var(--primary-color);
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .nav-menu {
+            list-style: none;
+            padding: 0 1rem;
+        }
+
+        .nav-item {
+            margin-bottom: 0.5rem;
+        }
+
+        .nav-link {
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+            padding: 0.75rem 1rem;
+            color: var(--text-color);
+            text-decoration: none;
+            border-radius: 0.5rem;
+            transition: all 0.2s;
+        }
+
+        .nav-link:hover, .nav-link.active {
+            background: var(--primary-color);
+            color: white;
+        }
+
+        .nav-link i {
+            width: 20px;
+            text-align: center;
+        }
+
+        /* Main Content */
+        .main-content {
+            flex: 1;
+            margin-left: 260px;
+            padding: 1.5rem;
+            transition: margin-left 0.3s ease;
+        }
+
+        .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 2rem;
+            padding-bottom: 1rem;
+            border-bottom: 1px solid var(--border-color);
+        }
+
+        .header-actions {
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+        }
+
+        .theme-toggle, .logout-btn {
+            background: none;
+            border: 1px solid var(--border-color);
+            padding: 0.5rem;
+            border-radius: 0.375rem;
+            cursor: pointer;
+            color: var(--text-color);
+            transition: all 0.2s;
+        }
+
+        .theme-toggle:hover, .logout-btn:hover {
+            background: var(--hover-bg);
+        }
+
+        .hamburger {
+            display: block;
+            background: none;
+            border: none;
+            font-size: 1.5rem;
+            cursor: pointer;
+            color: var(--text-color);
+            padding: 0.5rem;
+        }
+
+        /* When active, sidebar slides in as an overlay */
+        .sidebar.active {
+            transform: translateX(0);
+            box-shadow: var(--shadow-lg);
+        }
+
+        /* Ensure main content uses full width by default */
+        .main-content {
+            flex: 1;
+            margin-left: 260px;
+            padding: 1.5rem;
+            transition: margin-left 0.3s ease;
+        }
+
+        /* Card Styles */
+        .card {
+            background: var(--card-bg);
+            border-radius: 0.75rem;
+            padding: 1.5rem;
+            box-shadow: var(--shadow);
+            border: 1px solid var(--border-color);
+            margin-bottom: 1.5rem;
+        }
+
+        .card-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 1rem;
+        }
+
+        .card-title {
+            font-size: 1.25rem;
+            font-weight: 600;
+            color: var(--text-color);
+        }
+
+        /* Stats Grid */
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+            gap: 1.5rem;
+            margin-bottom: 2rem;
+        }
+
+        .stat-card {
+            background: var(--card-bg);
+            padding: 1.5rem;
+            border-radius: 0.75rem;
+            box-shadow: var(--shadow);
+            border-left: 4px solid var(--primary-color);
+        }
+
+        .stat-value {
+            font-size: 2rem;
+            font-weight: 700;
+            color: var(--primary-color);
+            margin-bottom: 0.5rem;
+        }
+
+        .stat-label {
+            color: var(--text-muted);
+            font-size: 0.875rem;
+        }
+
+        /* Table Styles */
+        .table-container {
+            overflow-x: auto;
+            -webkit-overflow-scrolling: touch;
+            border-radius: 0.5rem;
+            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+
+        th, td {
+            padding: 0.75rem 1rem;
+            text-align: left;
+            border-bottom: 1px solid var(--border-color);
+        }
+
+        th {
+            background: var(--hover-bg);
+            font-weight: 600;
+            color: var(--text-color);
+        }
+
+        tr:hover {
+            background: var(--hover-bg);
+        }
+
+        tr.inactive-row {
+            opacity: 0.65;
+            background-color: rgba(107, 114, 128, 0.1);
+        }
+
+        tr.inactive-row:hover {
+            opacity: 0.8;
+        }
+
+        /* Form Styles */
+        .form-group {
+            margin-bottom: 1rem;
+        }
+
+        label {
+            display: block;
+            margin-bottom: 0.5rem;
+            font-weight: 500;
+            color: var(--text-color);
+        }
+
+        input, select, textarea {
+            width: 100%;
+            padding: 0.75rem;
+            border: 1px solid var(--border-color);
+            border-radius: 0.375rem;
+            background: var(--bg-color);
+            color: var(--text-color);
+            font-size: 1rem;
+        }
+
+        input:focus, select:focus, textarea:focus {
+            outline: none;
+            border-color: var(--primary-color);
+            box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.1);
+        }
+
+        .btn {
+            padding: 0.75rem 1.5rem;
+            border: none;
+            border-radius: 0.375rem;
+            font-size: 0.875rem;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.2s;
+            display: inline-flex;
+            align-items: center;
+            gap: 0.5rem;
+            /* Touch-friendly */
+            min-height: 44px;
+            min-width: 44px;
+            -webkit-tap-highlight-color: transparent;
+            user-select: none;
+            -webkit-user-select: none;
+        }
+
+        .btn-primary {
+            background: var(--primary-color);
+            color: white;
+        }
+
+        .btn-primary:hover {
+            background: var(--primary-hover);
+        }
+
+        .btn-success {
+            background: var(--success-color);
+            color: white;
+        }
+
+        .btn-warning {
+            background: var(--warning-color);
+            color: white;
+        }
+
+        .btn-danger {
+            background: var(--danger-color);
+            color: white;
+        }
+
+        .btn-sm {
+            padding: 0.5rem 1rem;
+            font-size: 0.75rem;
+        }
+
+        /* Status Badges */
+        .badge {
+            padding: 0.25rem 0.75rem;
+            border-radius: 9999px;
+            font-size: 0.75rem;
+            font-weight: 500;
+        }
+
+        .badge-success {
+            background: #dcfce7;
+            color: #166534;
+        }
+
+        .badge-warning {
+            background: #fef3c7;
+            color: #92400e;
+        }
+
+        .badge-danger {
+            background: #fee2e2;
+            color: #991b1b;
+        }
+
+        .badge-info {
+            background: #dbeafe;
+            color: #1e40af;
+        }
+
+        /* Tabs */
+        .tabs {
+            display: flex;
+            border-bottom: 1px solid var(--border-color);
+            margin-bottom: 1.5rem;
+        }
+
+        .tab {
+            padding: 0.75rem 1.5rem;
+            background: none;
+            border: none;
+            color: var(--text-muted);
+            cursor: pointer;
+            border-bottom: 2px solid transparent;
+            transition: all 0.2s;
+            /* Touch-friendly */
+            min-height: 44px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            -webkit-tap-highlight-color: transparent;
+            user-select: none;
+            -webkit-user-select: none;
+            border-radius: 0.25rem;
+            white-space: nowrap;
+        }
+
+        .tab.active {
+            color: var(--primary-color);
+            border-bottom-color: var(--primary-color);
+        }
+
+        .tab-content {
+            display: none;
+        }
+
+        .tab-content.active {
+            display: block;
+        }
+
+        /* Loading Spinner */
+        .loading {
+            display: inline-block;
+            width: 20px;
+            height: 20px;
+            border: 3px solid #f3f3f3;
+            border-top: 3px solid var(--primary-color);
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        /* Mobile Responsive */
+        @media (max-width: 768px) {
+            .hamburger {
+                display: block;
+            }
+
+            .sidebar {
+                width: 100%;
+                max-width: 250px;
+                height: 100vh;
+                transform: translateX(-100%);
+                position: fixed;
+                top: 0;
+                left: 0;
+                z-index: 1001;
+            }
+
+            .sidebar.active {
+                transform: translateX(0);
+            }
+
+            .main-content {
+                margin-left: 0;
+                padding: 1rem;
+            }
+
+            .stats-grid {
+                grid-template-columns: 1fr;
+                gap: 1rem;
+            }
+
+            .header {
+                flex-direction: column;
+                gap: 0.75rem;
+                align-items: stretch;
+                margin-bottom: 1.5rem;
+            }
+
+            .header-actions {
+                width: 100%;
+                justify-content: space-between;
+                gap: 0.5rem;
+            }
+
+            .table-container {
+                font-size: 0.85rem;
+            }
+
+            th, td {
+                padding: 0.5rem 0.75rem;
+            }
+
+            .btn {
+                padding: 0.5rem 1rem;
+                font-size: 0.75rem;
+            }
+
+            .card {
+                padding: 1rem;
+                margin-bottom: 1rem;
+            }
+
+            .card-title {
+                font-size: 1rem;
+            }
+
+            .stat-value {
+                font-size: 1.5rem;
+            }
+
+            .stat-card {
+                padding: 1rem;
+            }
+
+            .tabs {
+                flex-wrap: wrap;
+            }
+
+            .tab {
+                padding: 0.5rem 1rem;
+                font-size: 0.85rem;
+            }
+
+            input, select, textarea {
+                font-size: 16px;
+            }
+
+            .form-group {
+                margin-bottom: 0.75rem;
+            }
+
+            label {
+                font-size: 0.9rem;
+                margin-bottom: 0.25rem;
+            }
+        }
+
+        @media (max-width: 576px) {
+            .hamburger {
+                display: block;
+                font-size: 1.25rem;
+            }
+
+            .sidebar {
+                width: 85%;
+                max-width: 280px;
+            }
+
+            .sidebar-header {
+                padding: 1rem;
+            }
+
+            .sidebar-header h1 {
+                font-size: 1.25rem;
+            }
+
+            .main-content {
+                margin-left: 0;
+                padding: 0.75rem;
+            }
+
+            .header {
+                margin-bottom: 1rem;
+                padding-bottom: 0.75rem;
+            }
+
+            .header h1 {
+                font-size: 1.25rem;
+            }
+
+            .header-actions {
+                width: 100%;
+                flex-wrap: wrap;
+                gap: 0.5rem;
+            }
+
+            .stats-grid {
+                gap: 0.75rem;
+            }
+
+            .stat-card {
+                padding: 0.75rem;
+                border-left-width: 3px;
+            }
+
+            .stat-value {
+                font-size: 1.25rem;
+                margin-bottom: 0.25rem;
+            }
+
+            .stat-label {
+                font-size: 0.7rem;
+            }
+
+            .table-container {
+                font-size: 0.7rem;
+                margin-bottom: 1rem;
+                -webkit-overflow-scrolling: touch;
+            }
+
+            th, td {
+                padding: 0.35rem 0.5rem;
+                word-break: break-word;
+            }
+
+            th {
+                font-size: 0.7rem;
+            }
+
+            .btn {
+                padding: 0.4rem 0.7rem;
+                font-size: 0.65rem;
+                gap: 0.25rem;
+                white-space: nowrap;
+            }
+
+            .btn i {
+                font-size: 0.75rem;
+            }
+
+            .btn-sm {
+                padding: 0.3rem 0.6rem;
+                font-size: 0.6rem;
+            }
+
+            .card {
+                padding: 0.75rem;
+                margin-bottom: 0.75rem;
+                border-radius: 0.5rem;
+            }
+
+            .card-title {
+                font-size: 0.9rem;
+                margin-bottom: 0.5rem;
+            }
+
+            .form-group {
+                margin-bottom: 0.5rem;
+            }
+
+            label {
+                font-size: 0.8rem;
+                margin-bottom: 0.2rem;
+            }
+
+            input, select, textarea {
+                padding: 0.5rem;
+                font-size: 16px;
+                border-radius: 0.3rem;
+            }
+
+            .tab {
+                padding: 0.4rem 0.6rem;
+                font-size: 0.7rem;
+            }
+
+            .badge {
+                padding: 0.1rem 0.4rem;
+                font-size: 0.6rem;
+            }
+
+            .overlay {
+                z-index: 1000;
+            }
+
+            .nav-menu {
+                padding: 0 0.5rem;
+            }
+
+            .nav-link {
+                padding: 0.6rem 0.75rem;
+                font-size: 0.9rem;
+                gap: 0.5rem;
+            }
+
+            .nav-link i {
+                width: 18px;
+                font-size: 0.95rem;
+            }
+        }
+
+        /* Overlay for mobile */
+        .overlay {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0, 0, 0, 0.5);
+            z-index: 999;
+        }
+
+        .overlay.active {
+            display: block;
+        }
+
+        /* System Status */
+        .status-indicator {
+            display: inline-block;
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            margin-right: 0.5rem;
+        }
+
+        .status-online {
+            background: var(--success-color);
+        }
+
+        .status-offline {
+            background: var(--danger-color);
+        }
+
+        /* Pricing Groups */
+        .pricing-group {
+            background: var(--card-bg);
+            border: 1px solid var(--border-color);
+            border-radius: 0.5rem;
+            padding: 1rem;
+            margin-bottom: 1rem;
+        }
+
+        .pricing-group-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 1rem;
+        }
+
+        .discount-badge {
+            background: var(--primary-color);
+            color: white;
+            padding: 0.25rem 0.75rem;
+            border-radius: 9999px;
+            font-size: 0.875rem;
+        }
+
+        /* Orders Table */
+        .orders-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 1rem;
+        }
+
+        .orders-table th, .orders-table td {
+            padding: 0.75rem 1rem;
+            text-align: left;
+            border-bottom: 1px solid var(--border-color);
+        }
+
+        .orders-table th {
+            background: var(--hover-bg);
+            font-weight: 600;
+            color: var(--text-color);
+        }
+
+        .orders-table tr:hover {
+            background: var(--hover-bg);
+        }
+
+        /* Mobile Responsive Tables */
+        @media (max-width: 768px) {
+            .sidebar {
+                width: 100%;
+                height: auto;
+                position: fixed;
+                top: 0;
+                left: 0;
+                z-index: 1001;
+                max-height: 80vh;
+                overflow-y: auto;
+            }
+
+            .sidebar.active {
+                transform: translateX(0);
+            }
+
+            .overlay {
+                display: none;
+            }
+
+            .overlay.active {
+                display: block;
+                position: fixed;
+                top: 0;
+                left: 0;
+                right: 0;
+                bottom: 0;
+                background: rgba(0, 0, 0, 0.5);
+                z-index: 999;
+            }
+
+            .main-content {
+                margin-left: 0;
+                padding: 1rem;
+                margin-top: 0;
+            }
+
+            .hamburger {
+                display: block;
+            }
+
+            /* Responsive Table Layout */
+            .table-wrapper {
+                width: 100%;
+                overflow-x: auto;
+                -webkit-overflow-scrolling: touch;
+                border: 1px solid var(--border-color);
+                border-radius: 0.5rem;
+                background: var(--card-bg);
+            }
+
+            table {
+                width: 100%;
+                border-collapse: collapse;
+                font-size: 0.85rem;
+            }
+
+            table th, table td {
+                padding: 0.75rem 0.5rem;
+                text-align: left;
+                border-bottom: 1px solid var(--border-color);
+                white-space: nowrap;
+            }
+
+            table th {
+                background: var(--hover-bg);
+                font-weight: 600;
+                position: sticky;
+                left: 0;
+                z-index: 10;
+            }
+
+            table tr:hover {
+                background: var(--hover-bg);
+            }
+
+            /* Action buttons in tables */
+            .action-buttons {
+                display: flex;
+                flex-wrap: wrap;
+                gap: 0.25rem;
+            }
+
+            .action-buttons button {
+                padding: 0.25rem 0.5rem;
+                font-size: 0.75rem;
+                white-space: nowrap;
+            }
+
+            /* Stats Grid */
+            .stats-grid {
+                grid-template-columns: 1fr;
+                gap: 1rem;
+            }
+
+            .stat-card {
+                padding: 1rem;
+            }
+
+            .stat-value {
+                font-size: 1.75rem;
+            }
+
+            /* Card responsiveness */
+            .card {
+                padding: 1rem;
+                margin-bottom: 1rem;
+            }
+
+            .card-header {
+                flex-direction: column;
+                gap: 0.5rem;
+            }
+
+            .card-header h3 {
+                width: 100%;
+            }
+
+            /* Form elements */
+            .form-group {
+                margin-bottom: 0.75rem;
+            }
+
+            .form-group input,
+            .form-group select,
+            .form-group textarea {
+                width: 100%;
+                padding: 0.5rem;
+                font-size: 1rem;
+            }
+
+            /* Button group responsive */
+            .btn-group {
+                display: flex;
+                flex-direction: column;
+                gap: 0.5rem;
+            }
+
+            .btn-group button {
+                width: 100%;
+            }
+
+            /* Header responsive */
+            .header {
+                flex-direction: column;
+                gap: 1rem;
+                align-items: flex-start;
+            }
+
+            .header h2 {
+                width: 100%;
+            }
+
+            .header-actions {
+                width: 100%;
+                justify-content: flex-start;
+            }
+        }
+
+        @media (max-width: 480px) {
+            body {
+                font-size: 0.9rem;
+            }
+
+            .main-content {
+                padding: 0.75rem;
+            }
+
+            .card {
+                padding: 0.75rem;
+            }
+
+            /* Mobile table optimization - make horizontally scrollable */
+            .table-container {
+                overflow-x: auto;
+                -webkit-overflow-scrolling: touch;
+                border: 1px solid var(--border-color);
+                border-radius: 0.375rem;
+            }
+
+            table {
+                min-width: 100%;
+                width: max-content;
+            }
+
+            table th, table td {
+                padding: 0.5rem 0.75rem;
+                font-size: 0.8rem;
+                white-space: nowrap;
+                min-width: 80px;
+            }
+
+            /* Ensure Action columns have minimum width */
+            table th:last-child,
+            table td:last-child {
+                min-width: 120px;
+                position: sticky;
+                right: 0;
+                background: var(--card-bg);
+                z-index: 10;
+                padding: 0.5rem;
+            }
+
+            table th:nth-last-child(2),
+            table td:nth-last-child(2) {
+                min-width: 100px;
+            }
+
+            .stat-value {
+                font-size: 1.5rem;
+            }
+
+            .badge {
+                padding: 0.2rem 0.4rem;
+                font-size: 0.65rem;
+            }
+
+            /* Mobile Package Management */
+            #packagesTab {
+                display: flex;
+                gap: 0.5rem;
+                margin-bottom: 1rem;
+                overflow-x: auto;
+                -webkit-overflow-scrolling: touch;
+                flex-wrap: wrap;
+            }
+
+            #packagesTab .tab {
+                flex: 1;
+                min-width: 120px;
+                padding: 0.75rem 1rem;
+                font-size: 0.9rem;
+                white-space: nowrap;
+            }
+
+            .card-header {
+                display: flex;
+                flex-direction: column;
+                gap: 0.75rem;
+            }
+
+            .card-header h3 {
+                font-size: 1.1rem;
+            }
+
+            #addPackageBtn {
+                width: 100%;
+                padding: 0.75rem;
+                font-size: 0.95rem;
+            }
+
+            /* Mobile Table Buttons */
+            table .btn-sm {
+                padding: 0.5rem 0.75rem;
+                font-size: 0.8rem;
+                min-width: 70px;
+                white-space: nowrap;
+            }
+
+            /* SweetAlert responsive */
+            .swal2-popup {
+                width: 90vw !important;
+                max-width: 400px !important;
+            }
+
+            .swal2-input,
+            .swal2-select,
+            .swal2-textarea {
+                font-size: 1rem !important;
+                padding: 0.75rem !important;
+                width: 100% !important;
+            }
+
+            label input[type="checkbox"] {
+                margin-right: 0.5rem;
+                width: 18px;
+                height: 18px;
+                cursor: pointer;
+            }
+
+            .swal2-actions {
+                gap: 0.5rem;
+            }
+
+            .swal2-actions button {
+                font-size: 0.95rem;
+                padding: 0.75rem 1.5rem;
+            }
+
+            /* Mobile-optimized form inputs */
+            input[type="text"],
+            input[type="email"],
+            input[type="number"],
+            input[type="password"],
+            select,
+            textarea {
+                font-size: 1rem;
+                padding: 0.75rem;
+                border: 1px solid var(--border-color);
+                border-radius: 0.375rem;
+            }
+
+            input[type="checkbox"],
+            input[type="radio"] {
+                cursor: pointer;
+                width: 18px;
+                height: 18px;
+                margin-right: 0.5rem;
+            }
+        }
+
+        /* Extra small screens optimization */
+        @media (max-width: 360px) {
+            .card-header {
+                gap: 0.5rem;
+            }
+
+            #addPackageBtn {
+                padding: 0.6rem 0.5rem;
+                font-size: 0.85rem;
+            }
+
+            #packagesTab .tab {
+                min-width: 100px;
+                padding: 0.6rem 0.75rem;
+                font-size: 0.8rem;
+            }
+
+            table th, table td {
+                padding: 0.4rem 0.5rem;
+                font-size: 0.7rem;
+                min-width: 70px;
+            }
+
+            table .btn-sm {
+                padding: 0.4rem 0.6rem;
+                font-size: 0.7rem;
+                min-width: 60px;
+            }
+        }
+
+        /* Tablet optimization (768px - 1024px) */
+        @media (min-width: 769px) and (max-width: 1024px) {
+            .card {
+                padding: 1.25rem;
+            }
+
+            #packagesTab {
+                gap: 1rem;
+            }
+
+            #packagesTab .tab {
+                flex: 1;
+                min-width: auto;
+                padding: 0.85rem 1.25rem;
+                font-size: 0.95rem;
+            }
+
+            table th, table td {
+                padding: 0.85rem 0.75rem;
+                font-size: 0.9rem;
+            }
+        }
+
+        /* Touch device optimizations - ensures clickable areas are at least 44x44px */
+        @media (hover: none) and (pointer: coarse) {
+            .btn {
+                min-height: 48px;
+                min-width: 48px;
+                padding: 0.75rem 1.25rem;
+            }
+
+            .btn-sm {
+                min-height: 40px;
+                min-width: 40px;
+                padding: 0.5rem 0.75rem;
+            }
+
+            .tab {
+                min-height: 48px;
+                padding: 0.75rem 1.25rem;
+            }
+
+            table button {
+                min-height: 40px;
+                padding: 0.5rem 0.75rem;
+            }
+
+            input[type="checkbox"],
+            input[type="radio"] {
+                width: 20px;
+                height: 20px;
+            }
+
+            /* Reduce animation delays on touch */
+            * {
+                -webkit-tap-highlight-color: transparent;
+            }
+
+            button:active {
+                opacity: 0.8;
+            }
+        }
+
+        /* High DPI / Retina display support */
+        @media (-webkit-min-device-pixel-ratio: 2), (min-resolution: 192dpi) {
+            .btn {
+                border: 1px solid transparent;
+            }
+
+            table {
+                border-collapse: separate;
+                border-spacing: 0;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="admin-container">
+        <!-- Sidebar -->
+        <div class="sidebar" id="sidebar">
+            <div class="sidebar-header">
+                <h1><i class="fas fa-database"></i> DataSell Admin</h1>
+            </div>
+            <ul class="nav-menu">
+                <li class="nav-item">
+                    <a href="#" class="nav-link active" data-tab="dashboard">
+                        <i class="fas fa-tachometer-alt"></i>
+                        <span>Dashboard</span>
+                    </a>
+                </li>
+                <li class="nav-item">
+                    <a href="#" class="nav-link" data-tab="users">
+                        <i class="fas fa-users"></i>
+                        <span>User Management</span>
+                    </a>
+                </li>
+                <li class="nav-item">
+                    <a href="#" class="nav-link" data-tab="notifications">
+                        <i class="fas fa-bell"></i>
+                        <span>Notifications</span>
+                    </a>
+                </li>
+                <li class="nav-item">
+                    <a href="#" class="nav-link" data-tab="packages">
+                        <i class="fas fa-box"></i>
+                        <span>Package Management</span>
+                    </a>
+                </li>
+                <li class="nav-item">
+                    <a href="#" class="nav-link" data-tab="transactions">
+                        <i class="fas fa-exchange-alt"></i>
+                        <span>Order Management</span>
+                    </a>
+                </li>
+                <li class="nav-item">
+                    <a href="#" class="nav-link" data-tab="deposits">
+                        <i class="fas fa-money-bill-wave"></i>
+                        <span>Deposits</span>
+                    </a>
+                </li>
+                <li class="nav-item">
+                    <a href="#" class="nav-link" data-tab="pricing">
+                        <i class="fas fa-tags"></i>
+                        <span>Pricing Control</span>
+                    </a>
+                </li>
+                <li class="nav-item">
+                    <a href="#" class="nav-link" data-tab="system">
+                        <i class="fas fa-server"></i>
+                        <span>System Monitoring</span>
+                    </a>
+                </li>
+                <li class="nav-item">
+                    <a href="#" class="nav-link" data-tab="security">
+                        <i class="fas fa-shield-alt"></i>
+                        <span>Security Logs</span>
+                    </a>
+                </li>
+            </ul>
+        </div>
+
+        <!-- Overlay for mobile -->
+        <div class="overlay" id="overlay"></div>
+
+        <!-- Main Content -->
+        <div class="main-content">
+            <div class="header">
+                <button class="hamburger" id="hamburger">
+                    <i class="fas fa-bars"></i>
+                </button>
+                <h2 id="page-title">Dashboard</h2>
+                <div class="header-actions">
+                    <button class="theme-toggle" id="themeToggle">
+                        <i class="fas fa-moon"></i>
+                    </button>
+                    <button class="logout-btn" id="logoutBtn">
+                        <i class="fas fa-sign-out-alt"></i>
+                        Logout
+                    </button>
+                </div>
+            </div>
+
+            <!-- Dashboard Tab -->
+            <div class="tab-content active" id="dashboard-tab">
+                <!-- Stats Overview -->
+                <div class="stats-grid" id="statsGrid">
+                    <div class="stat-card">
+                        <div class="stat-value" id="totalUsers">0</div>
+                        <div class="stat-label">Total Users</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-value" id="totalTransactions">0</div>
+                        <div class="stat-label">Total Transactions</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-value">₵<span id="totalRevenue">0</span></div>
+                        <div class="stat-label">Total Revenue</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-value" id="successRate">0%</div>
+                        <div class="stat-label">Success Rate</div>
+                    </div>
+                </div>
+
+                <!-- Charts and Additional Stats -->
+                <div class="card">
+                    <div class="card-header">
+                        <h3 class="card-title">Recent Activity</h3>
+                    </div>
+                    <div id="recentActivity">
+                        <p>Loading recent activity...</p>
+                    </div>
+                </div>
+
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <!-- Top Packages -->
+                    <div class="card">
+                        <div class="card-header">
+                            <h3 class="card-title">Top Packages</h3>
+                        </div>
+                        <div id="topPackages">
+                            <p>Loading top packages...</p>
+                        </div>
+                    </div>
+
+                    <!-- Network Performance -->
+                    <div class="card">
+                        <div class="card-header">
+                            <h3 class="card-title">Network Performance</h3>
+                        </div>
+                        <div id="networkStats">
+                            <p>Loading network stats...</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- User Management Tab -->
+            <div class="tab-content" id="users-tab">
+                <div class="card">
+                    <div class="card-header">
+                        <h3 class="card-title">User Management</h3>
+                        <div class="flex gap-2">
+                            <select id="userSort" class="form-control" style="max-width: 200px;">
+                                <option value="newest">Newest First</option>
+                                <option value="oldest">Oldest First</option>
+                                <option value="name">Name (A-Z)</option>
+                            </select>
+                            <input type="text" id="userSearch" placeholder="Search users..." class="form-control">
+                        </div>
+                    </div>
+                    <div class="table-container">
+                        <table id="usersTable">
+                            <thead>
+                                <tr>
+                                    <th>User ID</th>
+                                    <th>Name</th>
+                                    <th>Email</th>
+                                    <th>Phone</th>
+                                    <th>Balance</th>
+                                    <th>Date Joined</th>
+                                    <th>Pricing Tier</th>
+                                    <th>Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody id="usersTableBody">
+                                <tr>
+                                    <td colspan="8" class="text-center">Loading users...</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Notifications Tab -->
+            <div class="tab-content" id="notifications-tab">
+                <div class="card">
+                    <div class="card-header">
+                        <h3 class="card-title">Send Notification</h3>
+                    </div>
+                    <form id="notificationForm">
+                        <div class="form-group">
+                            <label>Title</label>
+                            <input type="text" id="notifTitle" class="form-control" placeholder="Notification title" required>
+                        </div>
+                        <div class="form-group">
+                            <label>Message</label>
+                            <textarea id="notifBody" class="form-control" placeholder="Notification message" rows="4" required></textarea>
+                        </div>
+                        <div class="form-group">
+                            <label>Image (optional)</label>
+                            <input type="file" id="notifImage" class="form-control" accept="image/*">
+                            <img id="imagePreview" style="max-width:200px; margin-top:10px; display:none;">
+                        </div>
+                        <button type="submit" class="btn btn-primary"><i class="fas fa-paper-plane"></i> Send Notification</button>
+                    </form>
+                </div>
+            </div>
+
+            <!-- Package Management Tab -->
+            <div class="tab-content" id="packages-tab">
+                <div class="tabs" id="packagesTab">
+                    <button class="tab active" data-network="mtn">MTN Packages</button>
+                    <button class="tab" data-network="at">AirtelTigo Packages</button>
+                </div>
+                
+                <div class="card">
+                    <div class="card-header">
+                        <h3 class="card-title" id="packagesTitle">MTN Packages</h3>
+                        <button class="btn btn-primary" id="addPackageBtn">
+                            <i class="fas fa-plus"></i> Add Package
+                        </button>
+                    </div>
+                    <div class="table-container">
+                        <table id="packagesTable">
+                            <thead>
+                                <tr>
+                                    <th>Package ID</th>
+                                    <th>Name</th>
+                                    <th>Price (₵)</th>
+                                    <th>Validity</th>
+                                    <th>Status</th>
+                                    <th>Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody id="packagesTableBody">
+                                <tr>
+                                    <td colspan="6" class="text-center">Loading packages...</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Order Management Tab -->
+            <div class="tab-content" id="transactions-tab">
+                <div class="card">
+                    <div class="card-header">
+                        <h3 class="card-title">Order Management</h3>
+                        <div class="flex gap-2">
+                            <select id="statusFilter" class="form-control">
+                                <option value="all">All Status</option>
+                                <option value="success">Success</option>
+                                <option value="failed">Failed</option>
+                                <option value="processing">Processing</option>
+                                <option value="refunded">Refunded</option>
+                            </select>
+                            <input type="text" id="transactionSearch" placeholder="Search..." class="form-control">
+                        </div>
+                    </div>
+                    <div class="table-container">
+                        <table id="transactionsTable">
+                            <thead>
+                                <tr>
+                                    <th>Reference</th>
+                                    <th>User</th>
+                                    <th>Package</th>
+                                    <th>Network</th>
+                                    <th>Phone</th>
+                                    <th>Amount</th>
+                                    <th>Status</th>
+                                    <th>Date</th>
+                                    <th>Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody id="transactionsTableBody">
+                                <tr>
+                                    <td colspan="11" class="text-center">Loading transactions...</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Pricing Control Tab -->
+            <div class="tab-content" id="pricing-tab">
+                <div class="card">
+                    <div class="card-header">
+                        <h3 class="card-title">Pricing Groups</h3>
+                    </div>
+                    <div id="pricingGroups">
+                        <div class="pricing-group">
+                            <div class="pricing-group-header">
+                                <h4>Regular Users</h4>
+                                <span class="discount-badge">0% Discount</span>
+                            </div>
+                            <div class="form-group">
+                                <label>Discount Percentage</label>
+                                <input type="number" id="regularDiscount" min="0" max="50" value="0" class="form-control">
+                            </div>
+                            <button class="btn btn-primary" onclick="updatePricingGroup('regular')">
+                                Update Pricing
+                            </button>
+                        </div>
+                        
+                        <div class="pricing-group">
+                            <div class="pricing-group-header">
+                                <h4>VIP Users</h4>
+                                <span class="discount-badge">10% Discount</span>
+                            </div>
+                            <div class="form-group">
+                                <label>Discount Percentage</label>
+                                <input type="number" id="vipDiscount" min="0" max="50" value="10" class="form-control">
+                            </div>
+                            <button class="btn btn-primary" onclick="updatePricingGroup('vip')">
+                                Update Pricing
+                            </button>
+                        </div>
+                        
+                        <div class="pricing-group">
+                            <div class="pricing-group-header">
+                                <h4>Premium Users</h4>
+                                <span class="discount-badge">15% Discount</span>
+                            </div>
+                            <div class="form-group">
+                                <label>Discount Percentage</label>
+                                <input type="number" id="premiumDiscount" min="0" max="50" value="15" class="form-control">
+                            </div>
+                            <button class="btn btn-primary" onclick="updatePricingGroup('premium')">
+                                Update Pricing
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- System Monitoring Tab -->
+            <div class="tab-content" id="system-tab">
+                <div class="stats-grid">
+                    <div class="stat-card">
+                        <div class="stat-value" id="paystackStatus">Checking...</div>
+                        <div class="stat-label">Paystack Status</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-value" id="firebaseStatus">Online</div>
+                        <div class="stat-label">Firebase Status</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-value" id="serverStatus">Healthy</div>
+                        <div class="stat-label">Server Status</div>
+                    </div>
+                </div>
+
+                <div class="card">
+                    <div class="card-header">
+                        <h3 class="card-title">System Metrics</h3>
+                        <button class="btn btn-primary" onclick="refreshSystemStatus()">
+                            <i class="fas fa-sync-alt"></i> Refresh
+                        </button>
+                    </div>
+                    <div id="systemMetrics">
+                        <p>Loading system metrics...</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Security Logs Tab -->
+            <div class="tab-content" id="security-tab">
+                <div class="card">
+                    <div class="card-header">
+                        <h3 class="card-title">Security & Admin Logs</h3>
+                    </div>
+                    <div class="table-container">
+                        <table id="securityLogsTable">
+                            <thead>
+                                <tr>
+                                    <th>Timestamp</th>
+                                    <th>Admin</th>
+                                    <th>Action</th>
+                                    <th>Details</th>
+                                    <th>IP Address</th>
+                                </tr>
+                            </thead>
+                            <tbody id="securityLogsBody">
+                                <tr>
+                                    <td colspan="5" class="text-center">Loading security logs...</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Deposits Tab -->
+            <div class="tab-content" id="deposits-tab">
+                <div class="card">
+                    <div class="card-header">
+                        <h3 class="card-title">User Deposits</h3>
+                        <div class="flex gap-2">
+                            <input type="text" id="depositsSearch" placeholder="Search by user or reference..." class="form-control" style="flex: 1;">
+                            <select id="depositsStatusFilter" class="form-control">
+                                <option value="">All Status</option>
+                                <option value="success">Success</option>
+                                <option value="pending">Pending</option>
+                                <option value="failed">Failed</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div class="table-wrapper">
+                        <table id="depositsTable">
+                            <thead>
+                                <tr>
+                                    <th>User</th>
+                                    <th>Email</th>
+                                    <th>Amount (₵)</th>
+                                    <th>Reference</th>
+                                    <th>Status</th>
+                                    <th>Date & Time</th>
+                                    <th>Source</th>
+                                </tr>
+                            </thead>
+                            <tbody id="depositsTableBody">
+                                <tr>
+                                    <td colspan="7" class="text-center">Loading deposits...</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Manage User Funds Modal -->
+        <div id="manageFundsModal" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); z-index: 2000; justify-content: center; align-items: center;">
+            <div style="background: var(--card-bg); border-radius: 8px; padding: 2rem; max-width: 500px; width: 90%; box-shadow: var(--shadow-lg); color: var(--text-color);">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem;">
+                    <h2 style="margin: 0;">Manage User Funds</h2>
+                    <button onclick="closeFundsModal()" style="background: none; border: none; font-size: 1.5rem; cursor: pointer; color: var(--text-color);">×</button>
+                </div>
+                
+                <div style="margin-bottom: 1rem;">
+                    <p style="margin: 0.5rem 0;"><strong>User ID:</strong> <span id="fundsModalUserId"></span></p>
+                    <p style="margin: 0.5rem 0;"><strong>Current Balance:</strong> ₵<span id="fundsModalBalance">0.00</span></p>
+                </div>
+
+                <div style="margin-bottom: 1.5rem; padding: 1rem; background: var(--hover-bg); border-radius: 4px;">
+                    <label style="display: block; margin-bottom: 1rem;">
+                        <input type="radio" name="fundsAction" value="add" checked style="margin-right: 0.5rem;">
+                        <span style="font-weight: 600; color: #10b981;">Add Funds</span>
+                    </label>
+                    <label style="display: block;">
+                        <input type="radio" name="fundsAction" value="deduct" style="margin-right: 0.5rem;">
+                        <span style="font-weight: 600; color: #ef4444;">Deduct Funds</span>
+                    </label>
+                </div>
+
+                <div class="form-group">
+                    <label style="display: block; margin-bottom: 0.5rem; font-weight: 600;">Amount (₵)</label>
+                    <input type="number" id="fundsAmount" placeholder="Enter amount" step="0.01" min="0" class="form-control" style="width: 100%; padding: 0.75rem; border: 1px solid var(--border-color); border-radius: 4px; background: var(--bg-color); color: var(--text-color);">
+                </div>
+
+                <div class="form-group" style="margin-top: 1rem;">
+                    <label style="display: block; margin-bottom: 0.5rem; font-weight: 600;">Note (Optional)</label>
+                    <textarea id="fundsNote" placeholder="Reason for this transaction..." class="form-control" style="width: 100%; padding: 0.75rem; border: 1px solid var(--border-color); border-radius: 4px; background: var(--bg-color); color: var(--text-color); min-height: 80px;"></textarea>
+                </div>
+
+                <div style="display: flex; gap: 1rem; margin-top: 2rem;">
+                    <button onclick="processFunds()" style="flex: 1; padding: 0.75rem; background: #3b82f6; color: white; border: none; border-radius: 4px; cursor: pointer; font-weight: 600;">Process</button>
+                    <button onclick="closeFundsModal()" style="flex: 1; padding: 0.75rem; background: var(--border-color); color: var(--text-color); border: none; border-radius: 4px; cursor: pointer; font-weight: 600;">Cancel</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- SweetAlert2 -->
+    <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11/dist/sweetalert2.all.min.js"></script>
+    
+    <script>
+// DASHBOARD LOADING FUNCTIONS
+async function loadDashboardData() {
+  try {
+    const response = await fetch('/api/admin/dashboard/stats', {
+      credentials: 'include'
+    });
+    
+    const data = await response.json();
+    
+    if (data.success && data.stats) {
+      const stats = data.stats;
+      
+      // Update dashboard stats
+      document.getElementById('totalUsers').textContent = stats.totalUsers || 0;
+      document.getElementById('totalTransactions').textContent = stats.totalTransactions || 0;
+      document.getElementById('totalRevenue').textContent = parseFloat(stats.totalRevenue || 0).toFixed(2);
+      document.getElementById('successRate').textContent = (stats.successRate || 0) + '%';
+      
+      console.log('✅ Dashboard stats loaded:', stats);
+    } else {
+      console.error('❌ Failed to load dashboard stats:', data.error);
+    }
+  } catch (error) {
+    console.error('Error loading dashboard:', error);
+  }
+  
+  // Load recent activity
+  loadRecentActivity();
+  loadTopPackages();
+}
+
+async function loadRecentActivity() {
+  try {
+    const response = await fetch('/api/admin/recent-activity', {
+      credentials: 'include'
+    });
+    
+    const data = await response.json();
+    
+    if (data.success && data.activity) {
+      displayRecentActivity(data.activity);
+    }
+  } catch (error) {
+    console.error('Error loading recent activity:', error);
+    document.getElementById('recentActivity').innerHTML = '<p style="color: var(--danger-color);">Failed to load recent activity</p>';
+  }
+}
+
+function displayRecentActivity(activities) {
+  if (!activities || activities.length === 0) {
+    document.getElementById('recentActivity').innerHTML = '<p>No recent activity</p>';
+    return;
+  }
+  
+  const html = activities.slice(0, 5).map(item => {
+    const icon = item.type === 'payment' ? '💳' : '📊';
+    const statusColor = item.status === 'success' ? '#10b981' : item.status === 'pending' ? '#f59e0b' : '#ef4444';
+    
+    return `
+      <div style="padding: 1rem; border-bottom: 1px solid var(--border-color); display: flex; align-items: center; gap: 1rem;">
+        <span style="font-size: 1.5rem;">${icon}</span>
+        <div style="flex: 1;">
+          <p style="margin: 0; font-weight: 600;">${item.description || 'Transaction'} <span style="color: #6b7280; font-weight: 400;">by ${item.userName || 'Unknown'}</span></p>
+          <p style="margin: 0.25rem 0 0 0; color: #6b7280; font-size: 0.875rem;">₵${item.amount || 0} • Status: <span style="color: ${statusColor}; font-weight: 600;">${item.status || 'pending'}</span></p>
+          <p style="margin: 0.25rem 0 0 0; color: #6b7280; font-size: 0.75rem;">${new Date(item.timestamp).toLocaleString()}</p>
+        </div>
+      </div>
+    `;
+  }).join('');
+  
+  document.getElementById('recentActivity').innerHTML = html;
+}
+
+async function loadTopPackages() {
+  try {
+    const response = await fetch('/api/admin/dashboard/stats', {
+      credentials: 'include'
+    });
+    
+    const data = await response.json();
+    
+    if (data.success && data.topPackages) {
+      displayTopPackages(data.topPackages);
+    } else if (data.success && data.stats && data.stats.topPackages) {
+      displayTopPackages(data.stats.topPackages);
+    }
+  } catch (error) {
+    console.error('Error loading top packages:', error);
+  }
+}
+
+function displayTopPackages(packages) {
+  if (!packages || packages.length === 0) {
+    document.getElementById('topPackages').innerHTML = '<p>No package data</p>';
+    return;
+  }
+  
+  const html = `
+    <div style="padding: 1rem;">
+      ${packages.map((pkg, idx) => `
+        <div style="padding: 0.75rem 0; border-bottom: 1px solid var(--border-color); display: flex; justify-content: space-between; align-items: center;">
+          <span style="font-weight: 600;">${idx + 1}. ${pkg.name}</span>
+          <span style="background: #3b82f6; color: white; padding: 0.25rem 0.75rem; border-radius: 12px; font-size: 0.875rem; font-weight: 600;">${pkg.count} sales</span>
+        </div>
+      `).join('')}
+    </div>
+  `;
+  
+  document.getElementById('topPackages').innerHTML = html;
+}
+
+async function loadUsers() {
+  try {
+    const response = await fetch('/api/admin/users', {
+      credentials: 'include'
+    });
+    
+    const data = await response.json();
+    
+    if (data.success && data.users) {
+      allUsersData = data.users;
+      // Apply default "newest first" sorting
+      sortAndDisplayUsers('newest');
+    }
+  } catch (error) {
+    console.error('Error loading users:', error);
+  }
+}
+
+function displayUsers(users) {
+  if (!users || users.length === 0) {
+    document.getElementById('usersTableBody').innerHTML = '<tr><td colspan="8" style="text-align: center; padding: 20px;">No users found</td></tr>';
+    return;
+  }
+  
+  const tbody = document.getElementById('usersTableBody');
+  if (tbody) {
+    tbody.innerHTML = users.map(user => {
+      const tierName = (user.pricingGroup || 'regular').toUpperCase();
+      const tierColor = user.pricingGroup === 'vip' ? '#ef4444' : user.pricingGroup === 'premium' ? '#f59e0b' : '#6b7280';
+      const tierDisplay = user.pricingGroup === 'vip' ? 'VIP (10%)' : user.pricingGroup === 'premium' ? 'Premium (5%)' : 'Regular (0%)';
+      const dateJoined = user.createdAt ? new Date(user.createdAt).toLocaleDateString() : 'N/A';
+      
+      return `
+      <tr>
+        <td>${user.uid.substring(0, 8)}...</td>
+        <td>${(user.firstName || '') + ' ' + (user.lastName || '')}</td>
+        <td>${user.email || 'N/A'}</td>
+        <td>${user.phone || 'N/A'}</td>
+        <td>₵${parseFloat(user.walletBalance || 0).toFixed(2)}</td>
+        <td>${dateJoined}</td>
+        <td style="text-align: center;">
+          <button onclick="setPricingTier('${user.uid}')" style="background: ${tierColor}; color: white; padding: 6px 12px; border: none; border-radius: 4px; cursor: pointer; font-size: 12px; font-weight: 600;">
+            ${tierDisplay}
+          </button>
+        </td>
+        <td>
+          <button onclick="manageUserFunds('${user.uid}')" style="padding: 6px 12px; background: #10b981; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 12px; font-weight: 600;">Funds</button>
+        </td>
+      </tr>
+    `}).join('');
+  }
+}
+
+// Load Top Packages
+async function loadTopPackages() {
+  try {
+    const response = await fetch('/api/admin/dashboard/stats', {
+      credentials: 'include'
+    });
+    const data = await response.json();
+    
+    if (data.success && data.stats && data.stats.topPackages && data.stats.topPackages.length > 0) {
+      const html = data.stats.topPackages.map((pkg, idx) => `
+        <div style="border-bottom: 1px solid #e5e7eb; padding: 12px 0; display: flex; justify-content: space-between; align-items: center;">
+          <div>
+            <p style="margin: 0; font-weight: 500;">${idx + 1}. ${pkg.name || 'Unknown'}</p>
+            <p style="margin: 4px 0 0 0; font-size: 12px; color: #6b7280;">Popular package</p>
+          </div>
+          <div style="text-align: right;">
+            <span style="display: block; font-weight: 600; color: #3b82f6;">${pkg.count || 0}</span>
+            <span style="display: block; font-size: 12px; color: #6b7280;">purchases</span>
+          </div>
+        </div>
+      `).join('');
+      
+      const topPackagesDiv = document.getElementById('topPackages');
+      if (topPackagesDiv) {
+        topPackagesDiv.innerHTML = html || '<p style="color: #999;">No package data</p>';
+      }
+    } else {
+      document.getElementById('topPackages').innerHTML = '<p style="color: #999;">No package data available</p>';
+    }
+  } catch (error) {
+    console.error('Error loading top packages:', error);
+    document.getElementById('topPackages').innerHTML = '<p style="color: #ef4444;">Failed to load packages</p>';
+  }
+}
+
+// Load System Status
+async function loadSystemStatus() {
+  try {
+    const response = await fetch('/api/admin/system/status', {
+      credentials: 'include'
+    });
+    const data = await response.json();
+    
+    const networkStatsDiv = document.getElementById('networkStats');
+    if (!networkStatsDiv) return;
+    
+    if (data.success && data.systemStatus) {
+      const status = data.systemStatus;
+      const html = `
+        <div style="padding: 12px 0;">
+          <div style="display: flex; justify-content: space-between; margin-bottom: 12px; padding-bottom: 12px; border-bottom: 1px solid #e5e7eb;">
+            <span>Paystack Status:</span>
+            <span style="color: ${status.paystack?.status === 'online' ? '#10b981' : '#ef4444'}; font-weight: 600;">${status.paystack?.status || 'offline'}</span>
+          </div>
+          <div style="display: flex; justify-content: space-between; margin-bottom: 12px; padding-bottom: 12px; border-bottom: 1px solid #e5e7eb;">
+            <span>Success Rate (24h):</span>
+            <span style="font-weight: 600;">${status.successRate || 0}%</span>
+          </div>
+          <div style="display: flex; justify-content: space-between;">
+            <span>Server Uptime:</span>
+            <span style="font-weight: 600;">${Math.floor((status.server?.uptime || 0) / 3600)} hours</span>
+          </div>
+        </div>
+      `;
+      networkStatsDiv.innerHTML = html;
+    } else {
+      networkStatsDiv.innerHTML = '<p style="color: #ef4444;">Failed to load system status</p>';
+    }
+  } catch (error) {
+    console.error('Error loading system status:', error);
+    const networkStatsDiv = document.getElementById('networkStats');
+    if (networkStatsDiv) {
+      networkStatsDiv.innerHTML = '<p style="color: #ef4444;">Failed to load system status</p>';
+    }
+  }
+}
+
+// Toggle Theme
+function toggleTheme() {
+  const html = document.documentElement;
+  const currentTheme = html.getAttribute('data-theme') || 'light';
+  const newTheme = currentTheme === 'light' ? 'dark' : 'light';
+  
+  html.setAttribute('data-theme', newTheme);
+  localStorage.setItem('admin-theme', newTheme);
+  
+  const icon = document.querySelector('#themeToggle i');
+  if (icon) {
+    icon.className = newTheme === 'dark' ? 'fas fa-sun' : 'fas fa-moon';
+  }
+}
+
+// Load Theme
+function loadTheme() {
+  const savedTheme = localStorage.getItem('admin-theme') || 'light';
+  document.documentElement.setAttribute('data-theme', savedTheme);
+  
+  const icon = document.querySelector('#themeToggle i');
+  if (icon) {
+    icon.className = savedTheme === 'dark' ? 'fas fa-sun' : 'fas fa-moon';
+  }
+}
+
+// Logout
+async function logout() {
+  try {
+    await fetch('/logout', {
+      method: 'POST',
+      credentials: 'include'
+    });
+    
+    // Redirect to login
+    window.location.href = '/login';
+  } catch (error) {
+    console.error('Logout error:', error);
+    window.location.href = '/login';
+  }
+}
+
+// Edit User
+// Edit User - REMOVED (Not used in table anymore)
+
+// Manage User Funds
+// (Implementation moved below with real functionality)
+
+// Set User Pricing Tier
+async function setPricingTier(userId) {
+  const user = allUsersData.find(u => u.uid === userId);
+  if (!user) {
+    Swal.fire('Error', 'User not found', 'error');
+    return;
+  }
+
+  const currentTier = user.pricingGroup || 'regular';
+  
+  const { value: selectedTier } = await Swal.fire({
+    title: `Set Pricing Tier for ${(user.firstName || '') + ' ' + (user.lastName || '')}`,
+    input: 'select',
+    inputOptions: {
+      'regular': 'Regular (0% Discount)',
+      'premium': 'Premium (5% Discount)',
+      'vip': 'VIP (10% Discount)'
+    },
+    inputValue: currentTier,
+    showCancelButton: true,
+    confirmButtonText: 'Update Tier',
+    preConfirm: (value) => {
+      if (!value) {
+        Swal.showValidationMessage('Please select a tier');
+        return false;
+      }
+      return value;
+    }
+  });
+
+  if (!selectedTier) return;
+
+  try {
+    const response = await fetch(`/api/admin/users/${userId}/set-tier`, {
+      method: 'POST',
+      credentials: 'include',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({ tier: selectedTier })
+    });
+
+    const result = await response.json();
+
+    if (result.success) {
+      Swal.fire('Success', result.message, 'success');
+      // Reload users to show updated tier
+      loadUsers();
+    } else {
+      Swal.fire('Error', result.error || 'Failed to update tier', 'error');
+    }
+  } catch (error) {
+    console.error('Error updating tier:', error);
+    Swal.fire('Error', 'Failed to update tier', 'error');
+  }
+}
+
+// Initialize on page load
+document.addEventListener('DOMContentLoaded', function() {
+  console.log('✅ Admin dashboard initializing...');
+  
+  // Load initial data
+  loadDashboardData();
+  loadUsers();
+  loadTopPackages();
+  loadSystemStatus();
+  loadSystemMetrics();
+  
+  // Reload dashboard data every 30 seconds
+  setInterval(loadDashboardData, 30000);
+  
+  // Auto-refresh system metrics every 30 seconds
+  setInterval(loadSystemMetrics, 30000);
+  
+  // Setup hamburger menu toggle
+  const hamburger = document.getElementById('hamburger');
+  const sidebar = document.querySelector('.sidebar');
+  const overlay = document.getElementById('overlay');
+  
+  if (hamburger) {
+    hamburger.addEventListener('click', function(e) {
+      e.stopPropagation();
+      if (sidebar) {
+        sidebar.style.transform = sidebar.style.transform === 'translateX(0px)' 
+          ? 'translateX(-100%)' 
+          : 'translateX(0px)';
+      }
+      if (overlay) {
+        overlay.style.display = overlay.style.display === 'block' ? 'none' : 'block';
+      }
+    });
+  }
+  
+  // Close sidebar when overlay is clicked
+  if (overlay) {
+    overlay.addEventListener('click', function() {
+      if (sidebar) {
+        sidebar.style.transform = 'translateX(-100%)';
+      }
+      overlay.style.display = 'none';
+    });
+  }
+  
+  // Close sidebar when a nav link is clicked
+  document.querySelectorAll('.nav-link').forEach(link => {
+    link.addEventListener('click', function() {
+      if (sidebar) {
+        sidebar.style.transform = 'translateX(-100%)';
+      }
+      if (overlay) {
+        overlay.style.display = 'none';
+      }
+    });
+  });
+  
+  // Setup theme toggle
+  const themeToggle = document.getElementById('themeToggle');
+  if (themeToggle) {
+    themeToggle.addEventListener('click', function() {
+      toggleTheme();
+    });
+  }
+  
+  // Setup logout
+  const logoutBtn = document.getElementById('logoutBtn');
+  if (logoutBtn) {
+    logoutBtn.addEventListener('click', function() {
+      logout();
+    });
+  }
+  
+  // Setup tab switching
+  document.querySelectorAll('[data-tab]').forEach(link => {
+    link.addEventListener('click', function(e) {
+      e.preventDefault();
+      const tabName = this.getAttribute('data-tab');
+      
+      // Hide all tabs
+      document.querySelectorAll('.tab-content').forEach(tab => {
+        tab.style.display = 'none';
+      });
+      
+      // Show selected tab
+      const selectedTab = document.getElementById(tabName + '-tab');
+      if (selectedTab) {
+        selectedTab.style.display = 'block';
+        
+        // Load data for the tab
+        if (tabName === 'dashboard') {
+          loadDashboardData();
+          loadTopPackages();
+          loadSystemStatus();
+        }
+        else if (tabName === 'users') loadUsers();
+        else if (tabName === 'deposits') loadDeposits();
+        else if (tabName === 'packages') loadPackages();
+        else if (tabName === 'transactions') loadTransactions();
+        else if (tabName === 'pricing') loadPricingGroups();
+        else if (tabName === 'system') loadSystemMetrics();
+        else if (tabName === 'security') loadSecurityLogs();
+      }
+    });
+  });
+  
+  // Setup deposits search and filter
+  const depositsSearch = document.getElementById('depositsSearch');
+  const depositsFilter = document.getElementById('depositsStatusFilter');
+  
+  if (depositsSearch) {
+    depositsSearch.addEventListener('input', searchDeposits);
+  }
+  
+  if (depositsFilter) {
+    depositsFilter.addEventListener('change', filterDeposits);
+  }
+
+  // Setup user sort dropdown
+  const userSort = document.getElementById('userSort');
+  if (userSort) {
+    userSort.addEventListener('change', function() {
+      sortAndDisplayUsers(this.value);
+    });
+  }
+
+  // Setup user search
+  const userSearch = document.getElementById('userSearch');
+  if (userSearch) {
+    userSearch.addEventListener('input', function() {
+      const searchValue = this.value.toLowerCase();
+      const rows = document.querySelectorAll('#usersTableBody tr');
+      rows.forEach(row => {
+        const text = row.textContent.toLowerCase();
+        row.style.display = text.includes(searchValue) ? '' : 'none';
+      });
+    });
+  }
+  
+  // Setup Add Package button
+  const addPackageBtn = document.getElementById('addPackageBtn');
+  if (addPackageBtn) {
+    addPackageBtn.addEventListener('click', addPackage);
+  }
+  
+  // Setup package network tabs (MTN vs AirtelTigo)
+  document.querySelectorAll('#packagesTab .tab').forEach(tab => {
+    tab.addEventListener('click', function(e) {
+      e.preventDefault();
+      const network = this.getAttribute('data-network');
+      console.log('📦 Network tab clicked:', network);
+      
+      // Update active tab styling
+      document.querySelectorAll('#packagesTab .tab').forEach(t => t.classList.remove('active'));
+      this.classList.add('active');
+      
+      // Update title
+      const titleMap = { mtn: 'MTN Packages', at: 'AirtelTigo Packages' };
+      document.getElementById('packagesTitle').textContent = titleMap[network] || 'Packages';
+      
+      // Load packages for selected network
+      console.log('📦 Loading packages for network:', network);
+      loadPackages(network);
+    });
+  });
+  
+  // Setup notification form handler
+  const notificationForm = document.getElementById('notificationForm');
+  if (notificationForm) {
+    notificationForm.addEventListener('submit', async function(e) {
+      e.preventDefault();
+      
+      const title = document.getElementById('notifTitle').value;
+      const body = document.getElementById('notifBody').value;
+      const imageFile = document.getElementById('notifImage').files[0];
+      
+      // Validation
+      if (!title || !body) {
+        Swal.fire('Error', 'Please fill in title and message', 'error');
+        return;
+      }
+      
+      // Show loading
+      Swal.fire({
+        title: 'Sending...',
+        icon: 'info',
+        allowOutsideClick: false,
+        allowEscapeKey: false,
+        didOpen: () => {
+          Swal.showLoading();
+        }
+      });
+      
+      try {
+        let imageBase64 = null;
+        
+        // Convert image to base64 if provided
+        if (imageFile) {
+          imageBase64 = await new Promise((resolve, reject) => {
+            const reader = new FileReader();
+            reader.onload = () => resolve(reader.result);
+            reader.onerror = reject;
+            reader.readAsDataURL(imageFile);
+          });
+        }
+        
+        // Send notification
+        const response = await fetch('/api/send-notification', {
+          method: 'POST',
+          credentials: 'include',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ title, body, imageBase64 })
+        });
+        
+        const data = await response.json();
+        
+        if (data.success) {
+          Swal.fire('Success!', 'Notification sent to all users', 'success');
+          // Reset form
+          notificationForm.reset();
+          document.getElementById('imagePreview').style.display = 'none';
+        } else {
+          Swal.fire('Error', data.error || 'Failed to send notification', 'error');
+        }
+      } catch (error) {
+        console.error('Error sending notification:', error);
+        Swal.fire('Error', 'Failed to send notification: ' + error.message, 'error');
+      }
+    });
+    
+    // Setup image preview
+    const imageInput = document.getElementById('notifImage');
+    if (imageInput) {
+      imageInput.addEventListener('change', function(e) {
+        const preview = document.getElementById('imagePreview');
+        const file = e.target.files[0];
+        
+        if (file) {
+          const reader = new FileReader();
+          reader.onload = function(event) {
+            preview.src = event.target.result;
+            preview.style.display = 'block';
+          };
+          reader.readAsDataURL(file);
+        } else {
+          preview.style.display = 'none';
+        }
+      });
+    }
+  }
+
+  // Load theme preference
+  loadTheme();
+});
+
+// Display Recent Activity in Dashboard
+function displayRecentActivity(activity) {
+  const recentActivityDiv = document.getElementById('recentActivity');
+  if (!activity || activity.length === 0) {
+    recentActivityDiv.innerHTML = '<p style="color: #999;">No recent activity yet</p>';
+    return;
+  }
+  
+  const html = activity.map(item => {
+    const timestamp = new Date(item.timestamp).toLocaleString();
+    const icon = item.type === 'payment' ? '💳' : '📊';
+    return `
+      <div style="border-bottom: 1px solid #e5e7eb; padding: 12px 0; display: flex; gap: 12px;">
+        <span style="font-size: 20px;">${icon}</span>
+        <div style="flex: 1;">
+          <p style="margin: 0; font-size: 14px; font-weight: 500;">${item.description} <span style="color: #6b7280; font-weight: 400;">by ${item.userName}</span></p>
+          <p style="margin: 4px 0 0 0; font-size: 12px; color: #6b7280;">
+            ${timestamp} • Amount: ₵${parseFloat(item.amount || 0).toFixed(2)} • Status: <span style="color: ${item.status === 'success' ? '#10b981' : item.status === 'pending' ? '#f59e0b' : '#ef4444'}">${item.status}</span>
+          </p>
+        </div>
+      </div>
+    `;
+  }).join('');
+  
+  recentActivityDiv.innerHTML = html;
+}
+
+// Load Deposits Function
+async function loadDeposits() {
+  try {
+    const tableBody = document.getElementById('depositsTableBody');
+    tableBody.innerHTML = '<tr><td colspan="7" style="text-align: center; padding: 20px;">Loading deposits...</td></tr>';
+    
+    const response = await fetch('/api/admin/deposits', {
+      credentials: 'include'
+    });
+    const data = await response.json();
+    
+    console.log('📊 Admin deposits response:', data);
+    
+    if (data.success && data.deposits) {
+      console.log(`📊 Displaying ${data.deposits.length} deposits`);
+      displayDeposits(data.deposits);
+    } else {
+      console.error('❌ Deposits fetch failed:', data);
+      tableBody.innerHTML = '<tr><td colspan="7" style="text-align: center; padding: 20px; color: #ef4444;">Error loading deposits: ' + (data.error || 'Unknown error') + '</td></tr>';
+    }
+  } catch (error) {
+    console.error('❌ Error loading deposits:', error);
+
+    const tableBody = document.getElementById('depositsTableBody');
+    tableBody.innerHTML = '<tr><td colspan="7" style="text-align: center; padding: 20px; color: #ef4444;">Failed to load deposits</td></tr>';
+  }
+}
+
+// Display Deposits Table
+function displayDeposits(deposits) {
+  const tableBody = document.getElementById('depositsTableBody');
+  
+  if (!deposits || deposits.length === 0) {
+    tableBody.innerHTML = '<tr><td colspan="7" style="text-align: center; padding: 20px;">No deposits found</td></tr>';
+    return;
+  }
+  
+  const html = deposits.map(deposit => {
+    const timestamp = new Date(deposit.timestamp).toLocaleString();
+    const statusColor = deposit.status === 'success' ? '#10b981' : deposit.status === 'pending' ? '#f59e0b' : '#ef4444';
+    const statusText = deposit.status.charAt(0).toUpperCase() + deposit.status.slice(1);
+    
+    return `
+      <tr>
+        <td>${deposit.userName || 'N/A'}</td>
+        <td>${deposit.userEmail || 'N/A'}</td>
+        <td>₵${parseFloat(deposit.amount || 0).toFixed(2)}</td>
+        <td><code style="background: #f3f4f6; padding: 4px 8px; border-radius: 4px;">${deposit.reference || 'N/A'}</code></td>
+        <td><span style="background: ${statusColor}20; color: ${statusColor}; padding: 4px 8px; border-radius: 4px; font-size: 12px; font-weight: 500;">${statusText}</span></td>
+        <td>${timestamp}</td>
+        <td>${deposit.source || 'Paystack'}</td>
+      </tr>
+    `;
+  }).join('');
+  
+  tableBody.innerHTML = html;
+}
+
+// Search Deposits Function
+function searchDeposits() {
+  const searchValue = document.getElementById('depositsSearch').value.toLowerCase();
+  const rows = document.querySelectorAll('#depositsTableBody tr');
+  
+  rows.forEach(row => {
+    const text = row.textContent.toLowerCase();
+    row.style.display = text.includes(searchValue) ? '' : 'none';
+  });
+}
+
+// Filter Deposits by Status
+function filterDeposits() {
+  const filterValue = document.getElementById('depositsStatusFilter').value.toLowerCase();
+  const rows = document.querySelectorAll('#depositsTableBody tr');
+  
+  rows.forEach(row => {
+    if (!filterValue) {
+      row.style.display = '';
+    } else {
+      const statusCell = row.querySelector('td:nth-child(5)');
+      const statusText = statusCell ? statusCell.textContent.toLowerCase() : '';
+      row.style.display = statusText.includes(filterValue) ? '' : 'none';
+    }
+  });
+}
+
+// Override the original switchTab to include deposits case
+const originalSwitchTab = window.switchTab;
+window.switchTab = function(tabName) {
+  if (originalSwitchTab) {
+    originalSwitchTab(tabName);
+  }
+  
+  // Load deposits when deposits tab is clicked
+  if (tabName === 'deposits') {
+    loadDeposits();
+  }
+};
+
+// User Sorting Functionality
+let allUsersData = [];
+
+function sortAndDisplayUsers(sortBy) {
+  let sorted = [...allUsersData];
+  
+  if (sortBy === 'newest') {
+    // Sort by creation date - newest first
+    sorted.sort((a, b) => {
+      const dateA = new Date(a.createdAt || 0).getTime();
+      const dateB = new Date(b.createdAt || 0).getTime();
+      return dateB - dateA; // Newest first
+    });
+  } else if (sortBy === 'oldest') {
+    // Sort by creation date - oldest first
+    sorted.sort((a, b) => {
+      const dateA = new Date(a.createdAt || 0).getTime();
+      const dateB = new Date(b.createdAt || 0).getTime();
+      return dateA - dateB; // Oldest first
+    });
+  } else if (sortBy === 'name') {
+    // Sort by name A-Z
+    sorted.sort((a, b) => {
+      const nameA = ((a.firstName || '') + ' ' + (a.lastName || '')).trim().toLowerCase();
+      const nameB = ((b.firstName || '') + ' ' + (b.lastName || '')).trim().toLowerCase();
+      return nameA.localeCompare(nameB);
+    });
+  }
+  
+  // Redraw the table with sorted data
+  const tbody = document.getElementById('usersTableBody');
+  if (tbody) {
+    if (!sorted || sorted.length === 0) {
+      tbody.innerHTML = '<tr><td colspan="8" style="text-align: center; padding: 20px;">No users found</td></tr>';
+      return;
+    }
+
+    const tierColor = (pricingGroup) => {
+      return pricingGroup === 'vip' ? '#ef4444' : pricingGroup === 'premium' ? '#f59e0b' : '#6b7280';
+    };
+
+    const tierDisplay = (pricingGroup) => {
+      return pricingGroup === 'vip' ? 'VIP (10%)' : pricingGroup === 'premium' ? 'Premium (5%)' : 'Regular (0%)';
+    };
+
+    tbody.innerHTML = sorted.map(user => {
+      const dateJoined = user.createdAt ? new Date(user.createdAt).toLocaleDateString() : 'N/A';
+      const color = tierColor(user.pricingGroup || 'regular');
+      const display = tierDisplay(user.pricingGroup || 'regular');
+
+      return `
+      <tr>
+        <td>${user.uid.substring(0, 8)}...</td>
+        <td>${(user.firstName || '') + ' ' + (user.lastName || '')}</td>
+        <td>${user.email || 'N/A'}</td>
+        <td>${user.phone || 'N/A'}</td>
+        <td>₵${parseFloat(user.walletBalance || 0).toFixed(2)}</td>
+        <td>${dateJoined}</td>
+        <td style="text-align: center;">
+          <button onclick="setPricingTier('${user.uid}')" style="background: ${color}; color: white; padding: 6px 12px; border: none; border-radius: 4px; cursor: pointer; font-size: 12px; font-weight: 600;">
+            ${display}
+          </button>
+        </td>
+        <td>
+          <button onclick="manageUserFunds('${user.uid}')" style="padding: 6px 12px; background: #10b981; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 12px; font-weight: 600;">Funds</button>
+        </td>
+      </tr>
+    `}).join('');
+  }
+}
+
+// MANAGE USER FUNDS FUNCTIONS
+let currentFundsUserId = null;
+
+function manageUserFunds(userId) {
+  // Find user in allUsersData
+  const user = allUsersData.find(u => u.uid === userId);
+  if (!user) {
+    Swal.fire('Error', 'User not found', 'error');
+    return;
+  }
+
+  currentFundsUserId = userId;
+  document.getElementById('fundsModalUserId').textContent = userId.substring(0, 8) + '...';
+  document.getElementById('fundsModalBalance').textContent = parseFloat(user.walletBalance || 0).toFixed(2);
+  document.getElementById('fundsAmount').value = '';
+  document.getElementById('fundsNote').value = '';
+  document.querySelector('input[name="fundsAction"][value="add"]').checked = true;
+  
+  const modal = document.getElementById('manageFundsModal');
+  modal.style.display = 'flex';
+}
+
+function closeFundsModal() {
+  const modal = document.getElementById('manageFundsModal');
+  modal.style.display = 'none';
+  currentFundsUserId = null;
+}
+
+async function processFunds() {
+  if (!currentFundsUserId) {
+    Swal.fire('Error', 'No user selected', 'error');
+    return;
+  }
+
+  const amount = parseFloat(document.getElementById('fundsAmount').value);
+  const note = document.getElementById('fundsNote').value;
+  const action = document.querySelector('input[name="fundsAction"]:checked').value;
+
+  // Validation
+  if (!amount || amount <= 0 || isNaN(amount)) {
+    Swal.fire('Error', 'Please enter a valid amount', 'error');
+    return;
+  }
+
+  // Show loading
+  Swal.fire({
+    title: 'Processing...',
+    icon: 'info',
+    allowOutsideClick: false,
+    allowEscapeKey: false,
+    didOpen: () => {
+      Swal.showLoading();
+    }
+  });
+
+  try {
+    const endpoint = action === 'add' 
+      ? `/api/admin/users/${currentFundsUserId}/add-funds`
+      : `/api/admin/users/${currentFundsUserId}/deduct-funds`;
+
+    const response = await fetch(endpoint, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      credentials: 'include',
+      body: JSON.stringify({ amount, note })
+    });
+
+    const result = await response.json();
+
+    if (result.success) {
+      Swal.fire({
+        title: 'Success',
+        text: result.message,
+        icon: 'success',
+        timer: 2000
+      });
+
+      closeFundsModal();
+      // Reload users to reflect balance change
+      if (typeof loadUsers === 'function') {
+        loadUsers();
+      }
+    } else {
+      Swal.fire('Error', result.error || 'Failed to process funds', 'error');
+    }
+  } catch (error) {
+    console.error('Error:', error);
+    Swal.fire('Error', 'Failed to process funds: ' + error.message, 'error');
+  }
+}
+
+// Load Packages Function
+// Global variable to track current network filter
+let currentPackageNetwork = 'mtn';
+
+async function loadPackages(network) {
+  // Update current network if provided
+  if (network) {
+    currentPackageNetwork = network;
+  }
+  
+  try {
+    console.log(`📦 Fetching packages for network: ${currentPackageNetwork}`);
+    const response = await fetch(`/api/admin/packages?network=${currentPackageNetwork}`, { credentials: 'include' });
+    const data = await response.json();
+    
+    console.log('📦 Packages response:', data);
+    
+    if (data.success && data.packages && data.packages.length > 0) {
+      console.log(`📦 Displaying ${data.packages.length} packages`);
+      const tbody = document.getElementById('packagesTableBody');
+      // Determine if status is a boolean (active property) or string
+      tbody.innerHTML = data.packages.map(pkg => {
+        const isActive = pkg.status === 'active' || pkg.active === true;
+        const statusColor = isActive ? '#10b981' : '#ef4444';
+        const statusText = isActive ? 'active' : 'inactive';
+        return `
+          <tr>
+            <td>${pkg.id || 'N/A'}</td>
+            <td>${pkg.name || 'N/A'}</td>
+            <td>₵${parseFloat(pkg.price || 0).toFixed(2)}</td>
+            <td>${pkg.validity || 'N/A'}</td>
+            <td><span style="color: ${statusColor}">${statusText}</span></td>
+            <td>
+              <button class="btn btn-sm" onclick="editPackage('${pkg.id}', '${currentPackageNetwork}')">Edit</button>
+              <button class="btn btn-sm" style="background-color: #ef4444; color: white; margin-left: 0.25rem;" onclick="deletePackage('${pkg.id}', '${pkg.name}', '${currentPackageNetwork}')">Delete</button>
+            </td>
+          </tr>
+        `;
+      }).join('');
+    } else {
+      console.log('📦 No packages in response or empty array:', data);
+      document.getElementById('packagesTableBody').innerHTML = '<tr><td colspan="6" class="text-center">No packages found</td></tr>';
+    }
+  } catch (error) {
+    console.error('❌ Error loading packages:', error);
+    document.getElementById('packagesTableBody').innerHTML = '<tr><td colspan="6" class="text-center" style="color: #ef4444;">Failed to load packages</td></tr>';
+  }
+}
+
+// Edit package function
+function editPackage(packageId, network) {
+  // Fetch current package data first to pre-populate the form
+  fetch(`/api/admin/packages?network=${network}`, { credentials: 'include' })
+    .then(r => r.json())
+    .then(data => {
+      if (data.success && data.packages) {
+        const pkg = data.packages.find(p => p.id === packageId);
+        if (!pkg) {
+          Swal.fire('Error', 'Package not found', 'error');
+          return;
+        }
+        
+        const isActive = pkg.active === true || pkg.status === 'active';
+        
+        Swal.fire({
+          title: `Edit Package ${packageId}`,
+          html: `
+            <input type="text" id="pkgName" placeholder="Package Name" class="swal2-input" value="${pkg.name || ''}">
+            <input type="number" id="pkgPrice" placeholder="Price (₵)" class="swal2-input" step="0.01" value="${pkg.price || ''}">
+            <input type="text" id="pkgValidity" placeholder="Validity" class="swal2-input" value="${pkg.validity || ''}">
+            <label style="display: block; margin-top: 10px;">
+              <input type="checkbox" id="pkgActive" ${isActive ? 'checked' : ''}> Active
+            </label>
+          `,
+          confirmButtonText: 'Save',
+          showCancelButton: true,
+          preConfirm: () => {
+            const name = document.getElementById('pkgName').value;
+            const price = document.getElementById('pkgPrice').value;
+            const validity = document.getElementById('pkgValidity').value;
+            const active = document.getElementById('pkgActive').checked;
+            
+            if (!name || !price) {
+              Swal.showValidationMessage('Please fill in all required fields');
+              return false;
+            }
+            
+            return { name, price, validity, active, originalActive: isActive };
+          }
+        }).then(async (result) => {
+          if (result.isConfirmed) {
+            try {
+              // Update price if changed
+              if (parseFloat(result.value.price) !== parseFloat(pkg.price)) {
+                const priceResp = await fetch('/api/admin/packages/update-price', {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  credentials: 'include',
+                  body: JSON.stringify({
+                    network,
+                    packageId,
+                    newPrice: parseFloat(result.value.price)
+                  })
+                });
+                
+                const priceData = await priceResp.json();
+                if (!priceData.success) {
+                  throw new Error(priceData.error);
+                }
+              }
+              
+              // Toggle active status if changed
+              if (result.value.active !== result.value.originalActive) {
+                const statusResp = await fetch('/api/admin/packages/toggle-active', {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  credentials: 'include',
+                  body: JSON.stringify({ network, packageId })
+                });
+                
+                const statusData = await statusResp.json();
+                if (!statusData.success) {
+                  throw new Error(statusData.error);
+                }
+              }
+              
+              Swal.fire('Success!', 'Package updated successfully', 'success');
+              loadPackages(network);
+            } catch (error) {
+              console.error('Error updating package:', error);
+              Swal.fire('Error', 'Failed to update package: ' + error.message, 'error');
+            }
+          }
+        });
+      }
+    })
+    .catch(error => {
+      console.error('Error loading package:', error);
+      Swal.fire('Error', 'Failed to load package details', 'error');
+    });
+}
+
+// Delete package function
+function deletePackage(packageId, packageName, network) {
+  Swal.fire({
+    title: 'Delete Package?',
+    text: `Are you sure you want to delete "${packageName}" (${packageId})? This action cannot be undone.`,
+    icon: 'warning',
+    showCancelButton: true,
+    confirmButtonColor: '#ef4444',
+    cancelButtonColor: '#6b7280',
+    confirmButtonText: 'Yes, Delete it!'
+  }).then(async (result) => {
+    if (result.isConfirmed) {
+      try {
+        const response = await fetch('/api/admin/packages/delete', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
+          body: JSON.stringify({ network, packageId })
+        });
+        
+        const data = await response.json();
+        
+        if (data.success) {
+          Swal.fire(
+            'Deleted!',
+            `Package "${packageName}" has been deleted successfully.`,
+            'success'
+          );
+          loadPackages(network);
+        } else {
+          Swal.fire('Error', data.error || 'Failed to delete package', 'error');
+        }
+      } catch (error) {
+        console.error('Error deleting package:', error);
+        Swal.fire('Error', 'Failed to delete package: ' + error.message, 'error');
+      }
+    }
+  });
+}
+
+// Add package function
+function addPackage() {
+  Swal.fire({
+    title: 'Add New Package',
+    html: `
+      <select id="pkgNetwork" class="swal2-input">
+        <option value="mtn">MTN</option>
+        <option value="at">AirtelTigo</option>
+      </select>
+      <input type="text" id="pkgId" placeholder="Package ID" class="swal2-input">
+      <input type="text" id="pkgName" placeholder="Package Name" class="swal2-input">
+      <input type="number" id="pkgPrice" placeholder="Price (₵)" class="swal2-input" step="0.01">
+      <input type="text" id="pkgValidity" placeholder="Validity" class="swal2-input">
+      <label style="display: block; margin-top: 10px;">
+        <input type="checkbox" id="pkgActive" checked> Active
+      </label>
+    `,
+    confirmButtonText: 'Add',
+    showCancelButton: true,
+    preConfirm: () => {
+      const network = document.getElementById('pkgNetwork').value;
+      const id = document.getElementById('pkgId').value;
+      const name = document.getElementById('pkgName').value;
+      const price = document.getElementById('pkgPrice').value;
+      const validity = document.getElementById('pkgValidity').value;
+      const active = document.getElementById('pkgActive').checked;
+      
+      if (!id || !name || !price) {
+        Swal.showValidationMessage('Please fill in all required fields');
+        return false;
+      }
+      
+      return { network, id, name, price, validity, active };
+    }
+  }).then(async (result) => {
+    if (result.isConfirmed) {
+      try {
+        // Call API to create package
+        const response = await fetch('/api/admin/packages/create', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
+          body: JSON.stringify(result.value)
+        });
+        
+        const data = await response.json();
+        
+        if (data.success) {
+          Swal.fire('Success!', 'Package added successfully', 'success');
+          loadPackages(result.value.network);
+        } else {
+          Swal.fire('Error', data.error || 'Failed to add package', 'error');
+        }
+      } catch (error) {
+        console.error('Error adding package:', error);
+        Swal.fire('Error', 'Failed to add package: ' + error.message, 'error');
+      }
+    }
+  });
+}
+
+// Load Transactions Function
+async function loadTransactions() {
+  try {
+    const response = await fetch('/api/admin/transactions', { credentials: 'include' });
+    const data = await response.json();
+    
+    if (data.success && data.transactions) {
+      const tbody = document.getElementById('transactionsTableBody');
+      tbody.innerHTML = data.transactions.map(t => {
+        // Determine Datamart status color - ONLY show actual Datamart status, not fallback
+        let datamartStatusColor = '#6b7280'; // default gray
+        return `
+        <tr>
+          <td><code>${(t.reference || 'N/A').substring(0, 8)}</code></td>
+          <td>${t.userName || 'N/A'}</td>
+          <td>${t.packageName || 'N/A'}</td>
+          <td>${t.network || 'N/A'}</td>
+          <td>${t.phoneNumber || t.phone || 'N/A'}</td>
+          <td>₵${parseFloat(t.amount || 0).toFixed(2)}</td>
+          <td><span style="color: ${t.status === 'success' ? '#10b981' : t.status === 'failed' ? '#ef4444' : '#f59e0b'}">${t.status || 'unknown'}</span></td>
+          <td>${new Date(t.timestamp).toLocaleDateString()}</td>
+          <td><button class="btn btn-sm" onclick="viewTransactionDetails('${t.id}')">Details</button></td>
+        </tr>
+      `}).join('');
+    } else {
+      document.getElementById('transactionsTableBody').innerHTML = '<tr><td colspan="10" class="text-center">No transactions found</td></tr>';
+    }
+  } catch (error) {
+    console.error('Error loading transactions:', error);
+    document.getElementById('transactionsTableBody').innerHTML = '<tr><td colspan="10" class="text-center" style="color: #ef4444;">Failed to load transactions</td></tr>';
+  }
+}
+
+// View transaction details
+function viewTransactionDetails(transactionId) {
+  Swal.fire({
+    title: 'Transaction Details',
+    text: `Transaction ID: ${transactionId}`,
+    icon: 'info'
+  });
+}
+
+// Load Pricing Groups Function
+async function loadPricingGroups() {
+  try {
+    const response = await fetch('/api/admin/pricing', { credentials: 'include' });
+    const data = await response.json();
+    
+    if (data.success && data.pricing) {
+      document.getElementById('regularDiscount').value = data.pricing.regular || 0;
+      document.getElementById('vipDiscount').value = data.pricing.vip || 10;
+      document.getElementById('premiumDiscount').value = data.pricing.premium || 15;
+    }
+  } catch (error) {
+    console.error('Error loading pricing:', error);
+  }
+}
+
+// Load System Metrics Function
+async function loadSystemMetrics() {
+  try {
+    const response = await fetch('/api/admin/system/status', { credentials: 'include' });
+    
+    if (!response.ok) {
+      throw new Error(`HTTP error! status: ${response.status}`);
+    }
+    
+    const data = await response.json();
+    
+    if (data.success && data.systemStatus) {
+      const status = data.systemStatus;
+      
+      // Update status cards
+      const paystackStatusEl = document.getElementById('paystackStatus');
+      const firebaseStatusEl = document.getElementById('firebaseStatus');
+      const serverStatusEl = document.getElementById('serverStatus');
+      
+      if (paystackStatusEl) {
+        paystackStatusEl.textContent = status.paystack?.status === 'online' ? '🟢 Online' : '🔴 Offline';
+        paystackStatusEl.style.color = status.paystack?.status === 'online' ? '#10b981' : '#ef4444';
+      }
+      
+      if (firebaseStatusEl) {
+        firebaseStatusEl.textContent = status.datamart?.status === 'online' ? '🟢 Online' : '🔴 Offline';
+        firebaseStatusEl.style.color = status.datamart?.status === 'online' ? '#10b981' : '#ef4444';
+      }
+      
+      if (serverStatusEl) {
+        serverStatusEl.textContent = status.server?.status === 'online' ? '🟢 Healthy' : '🔴 Down';
+        serverStatusEl.style.color = status.server?.status === 'online' ? '#10b981' : '#ef4444';
+      }
+      
+      // Update metrics display
+      const metricsHtml = `
+        <div style="padding: 1rem;">
+          <div style="margin-bottom: 1rem; padding-bottom: 1rem; border-bottom: 1px solid #e5e7eb;">
+            <p><strong>Server Status:</strong> <span style="color: ${status.server?.status === 'online' ? '#10b981' : '#ef4444'};">${status.server?.status === 'online' ? '🟢 Online' : '🔴 Offline'}</span></p>
+            <p><strong>Server Uptime:</strong> ${Math.floor((status.server?.uptime || 0) / 3600)} hours ${Math.floor(((status.server?.uptime || 0) % 3600) / 60)} minutes</p>
+          </div>
+          <div style="margin-bottom: 1rem; padding-bottom: 1rem; border-bottom: 1px solid #e5e7eb;">
+            <p><strong>Transaction Success Rate (24h):</strong> <span style="font-weight: 700;">${status.successRate || 0}%</span></p>
+            <p><strong>Recent Transactions:</strong> ${status.recentTransactions || 0}</p>
+            <p><strong>Total Users:</strong> ${status.stats?.totalUsers || 0}</p>
+          </div>
+          <div style="margin-bottom: 1rem; padding-bottom: 1rem; border-bottom: 1px solid #e5e7eb;">
+            <p><strong>MTN Package Cache:</strong> ${status.packageCache?.mtnCount || 0} packages</p>
+            <p><strong>AirtelTigo Package Cache:</strong> ${status.packageCache?.atCount || 0} packages</p>
+            <p><strong>Cache Last Updated:</strong> ${status.packageCache?.lastUpdated ? new Date(status.packageCache.lastUpdated).toLocaleString() : 'N/A'}</p>
+          </div>
+          <div>
+            <p><strong>External Services Status:</strong></p>
+            <p style="margin-left: 1rem;">• Paystack: <span style="color: ${status.paystack?.status === 'online' ? '#10b981' : '#ef4444'};">${status.paystack?.status === 'online' ? '🟢 Online' : '🔴 Offline'}</span></p>
+            <p style="margin-left: 1rem;">• Datamart: <span style="color: ${status.datamart?.status === 'online' ? '#10b981' : '#ef4444'};">${status.datamart?.status === 'online' ? '🟢 Online' : '🔴 Offline'}</span></p>
+          </div>
+        </div>
+      `;
+      document.getElementById('systemMetrics').innerHTML = metricsHtml;
+    } else {
+      document.getElementById('systemMetrics').innerHTML = '<p style="color: #ef4444;">Failed to load system metrics: ' + (data.error || 'Unknown error') + '</p>';
+    }
+  } catch (error) {
+    console.error('Error loading system metrics:', error);
+    document.getElementById('systemMetrics').innerHTML = '<p style="color: #ef4444;">Failed to load system metrics: ' + error.message + '</p>';
+  }
+}
+
+// Load Security Logs Function
+async function loadSecurityLogs() {
+  try {
+    const response = await fetch('/api/admin/security/logs', { credentials: 'include' });
+    const data = await response.json();
+    
+    if (data.success && data.logs) {
+      const tbody = document.getElementById('securityLogsBody');
+      tbody.innerHTML = data.logs.map(log => `
+        <tr>
+          <td>${new Date(log.timestamp).toLocaleString()}</td>
+          <td>${log.adminName || 'System'}</td>
+          <td>${log.action || 'N/A'}</td>
+          <td>${log.details || 'N/A'}</td>
+          <td><code>${log.ipAddress || 'N/A'}</code></td>
+        </tr>
+      `).join('');
+    } else {
+      document.getElementById('securityLogsBody').innerHTML = '<tr><td colspan="5" class="text-center">No security logs found</td></tr>';
+    }
+  } catch (error) {
+    console.error('Error loading security logs:', error);
+    document.getElementById('securityLogsBody').innerHTML = '<tr><td colspan="5" class="text-center" style="color: #ef4444;">Failed to load security logs</td></tr>';
+  }
+}
+
+function refreshSystemStatus() {
+  loadSystemMetrics();
+}
+
+function updatePricingGroup(group) {
+  const fieldId = group === 'regular' ? 'regularDiscount' : group === 'vip' ? 'vipDiscount' : 'premiumDiscount';
+  const discount = document.getElementById(fieldId).value;
+  
+  Swal.fire('Success', `${group.charAt(0).toUpperCase() + group.slice(1)} pricing updated to ${discount}% discount`, 'success');
+}
+
+
+
+    </script>
+</body>
+</html>

@@ -1,0 +1,17 @@
+services:
+  - type: web
+    name: datasell
+    env: node
+    plan: free
+    region: oregon
+    buildCommand: npm install
+    startCommand: node start.js
+    healthCheckPath: /health
+    healthCheckInterval: 10
+    healthCheckTimeout: 5
+    maxInstanceCount: 2
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: "3000"
