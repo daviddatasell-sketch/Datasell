@@ -946,6 +946,11 @@
         let packages = [];
         let phoneModal = null;
         let successModal = null;
+        let pricingData = {
+          regular: { discount: 0, name: 'Regular Users' },
+          vip: { discount: 10, name: 'VIP Users' },
+          premium: { discount: 15, name: 'Premium Users' }
+        };
 
         // Get URL parameters
         const urlParams = new URLSearchParams(window.location.search);
@@ -954,6 +959,9 @@
         // Initialize app
         async function initializeApp() {
             try {
+                // Load pricing data first
+                await loadPricingData();
+                
                 // Check authentication
                 const userResponse = await fetch('/api/user', { credentials: 'include' });
                 const userResult = await userResponse.json();
@@ -962,15 +970,9 @@
                     currentUser = userResult.user;
                     // Get user's pricing tier
                     userTier = currentUser.pricingGroup || 'regular';
-                    // Calculate discount based on tier
-                    if (userTier === 'vip') {
-                        userDiscount = 10;
-                    } else if (userTier === 'premium') {
-                        userDiscount = 5;
-                    } else {
-                        userDiscount = 0;
-                    }
-                    console.log(`💳 User tier: ${userTier}, Discount: ${userDiscount}%`);
+                    // Get discount from loaded pricing data
+                    userDiscount = pricingData[userTier]?.discount || 0;
+                    console.log(`💳 User tier: ${userTier}, Discount: ${userDiscount}% (from database)`);
                     await loadWalletBalance();
                     
                     await initializeNetwork();
@@ -998,6 +1000,24 @@
                 const names = currentUser.displayName.split(' ');
                 const initials = names.map(name => name[0]).join('').toUpperCase();
                 avatarElement.innerHTML = initials;
+            }
+        }
+
+        // Load pricing data from database
+        async function loadPricingData() {
+            try {
+                const response = await fetch('/api/admin/pricing/groups', { credentials: 'include' });
+                const result = await response.json();
+                
+                if (result.success && result.pricingGroups) {
+                    pricingData = result.pricingGroups;
+                    console.log('✅ Pricing data loaded:', pricingData);
+                } else {
+                    console.warn('Failed to load pricing data, using defaults');
+                }
+            } catch (error) {
+                console.error('Failed to load pricing data:', error);
+                console.warn('Using default pricing data');
             }
         }
 

@@ -1464,11 +1464,11 @@
                         <div class="pricing-group">
                             <div class="pricing-group-header">
                                 <h4>Regular Users</h4>
-                                <span class="discount-badge">0% Discount</span>
+                                <span class="discount-badge" id="regularBadge">0% Discount</span>
                             </div>
                             <div class="form-group">
                                 <label>Discount Percentage</label>
-                                <input type="number" id="regularDiscount" min="0" max="50" value="0" class="form-control">
+                                <input type="number" id="regularDiscount" min="0" max="50" value="0" class="form-control" onchange="updateBadge('regular')" oninput="updateBadge('regular')">
                             </div>
                             <button class="btn btn-primary" onclick="updatePricingGroup('regular')">
                                 Update Pricing
@@ -1478,11 +1478,11 @@
                         <div class="pricing-group">
                             <div class="pricing-group-header">
                                 <h4>VIP Users</h4>
-                                <span class="discount-badge">10% Discount</span>
+                                <span class="discount-badge" id="vipBadge">10% Discount</span>
                             </div>
                             <div class="form-group">
                                 <label>Discount Percentage</label>
-                                <input type="number" id="vipDiscount" min="0" max="50" value="10" class="form-control">
+                                <input type="number" id="vipDiscount" min="0" max="50" value="10" class="form-control" onchange="updateBadge('vip')" oninput="updateBadge('vip')">
                             </div>
                             <button class="btn btn-primary" onclick="updatePricingGroup('vip')">
                                 Update Pricing
@@ -1492,11 +1492,11 @@
                         <div class="pricing-group">
                             <div class="pricing-group-header">
                                 <h4>Premium Users</h4>
-                                <span class="discount-badge">15% Discount</span>
+                                <span class="discount-badge" id="premiumBadge">15% Discount</span>
                             </div>
                             <div class="form-group">
                                 <label>Discount Percentage</label>
-                                <input type="number" id="premiumDiscount" min="0" max="50" value="15" class="form-control">
+                                <input type="number" id="premiumDiscount" min="0" max="50" value="15" class="form-control" onchange="updateBadge('premium')" oninput="updateBadge('premium')">
                             </div>
                             <button class="btn btn-primary" onclick="updatePricingGroup('premium')">
                                 Update Pricing
@@ -1946,14 +1946,17 @@ async function setPricingTier(userId) {
 
   const currentTier = user.pricingGroup || 'regular';
   
+  // Build input options from current pricing data
+  const inputOptions = {
+    'regular': `Regular (${pricingData.regular?.discount || 0}% Discount)`,
+    'premium': `Premium (${pricingData.premium?.discount || 15}% Discount)`,
+    'vip': `VIP (${pricingData.vip?.discount || 10}% Discount)`
+  };
+  
   const { value: selectedTier } = await Swal.fire({
     title: `Set Pricing Tier for ${(user.firstName || '') + ' ' + (user.lastName || '')}`,
     input: 'select',
-    inputOptions: {
-      'regular': 'Regular (0% Discount)',
-      'premium': 'Premium (5% Discount)',
-      'vip': 'VIP (10% Discount)'
-    },
+    inputOptions: inputOptions,
     inputValue: currentTier,
     showCancelButton: true,
     confirmButtonText: 'Update Tier',
@@ -1998,6 +2001,7 @@ document.addEventListener('DOMContentLoaded', function() {
   console.log('✅ Admin dashboard initializing...');
   
   // Load initial data
+  loadPricingGroups();
   loadDashboardData();
   loadUsers();
   loadTopPackages();
@@ -2376,6 +2380,11 @@ window.switchTab = function(tabName) {
 
 // User Sorting Functionality
 let allUsersData = [];
+let pricingData = {
+  regular: { discount: 0, name: 'Regular Users' },
+  vip: { discount: 10, name: 'VIP Users' },
+  premium: { discount: 15, name: 'Premium Users' }
+};
 
 function sortAndDisplayUsers(sortBy) {
   let sorted = [...allUsersData];
@@ -2416,7 +2425,10 @@ function sortAndDisplayUsers(sortBy) {
     };
 
     const tierDisplay = (pricingGroup) => {
-      return pricingGroup === 'vip' ? 'VIP (10%)' : pricingGroup === 'premium' ? 'Premium (5%)' : 'Regular (0%)';
+      const tier = pricingGroup || 'regular';
+      const discount = pricingData[tier]?.discount || 0;
+      const tierName = tier.charAt(0).toUpperCase() + tier.slice(1);
+      return `${tierName} (${discount}%)`;
     };
 
     tbody.innerHTML = sorted.map(user => {
@@ -2826,13 +2838,14 @@ function viewTransactionDetails(transactionId) {
 // Load Pricing Groups Function
 async function loadPricingGroups() {
   try {
-    const response = await fetch('/api/admin/pricing', { credentials: 'include' });
+    const response = await fetch('/api/admin/pricing/groups', { credentials: 'include' });
     const data = await response.json();
     
-    if (data.success && data.pricing) {
-      document.getElementById('regularDiscount').value = data.pricing.regular || 0;
-      document.getElementById('vipDiscount').value = data.pricing.vip || 10;
-      document.getElementById('premiumDiscount').value = data.pricing.premium || 15;
+    if (data.success && data.pricingGroups) {
+      pricingData = data.pricingGroups;
+      document.getElementById('regularDiscount').value = data.pricingGroups.regular?.discount || 0;
+      document.getElementById('vipDiscount').value = data.pricingGroups.vip?.discount || 10;
+      document.getElementById('premiumDiscount').value = data.pricingGroups.premium?.discount || 15;
     }
   } catch (error) {
     console.error('Error loading pricing:', error);
@@ -2937,11 +2950,59 @@ function refreshSystemStatus() {
   loadSystemMetrics();
 }
 
-function updatePricingGroup(group) {
+function updateBadge(group) {
+  const fieldId = group === 'regular' ? 'regularDiscount' : group === 'vip' ? 'vipDiscount' : 'premiumDiscount';
+  const badgeId = group === 'regular' ? 'regularBadge' : group === 'vip' ? 'vipBadge' : 'premiumBadge';
+  const discount = document.getElementById(fieldId).value;
+  const badgeElement = document.getElementById(badgeId);
+  
+  if (badgeElement) {
+    badgeElement.textContent = `${discount}% Discount`;
+  }
+}
+
+async function updatePricingGroup(group) {
   const fieldId = group === 'regular' ? 'regularDiscount' : group === 'vip' ? 'vipDiscount' : 'premiumDiscount';
   const discount = document.getElementById(fieldId).value;
   
-  Swal.fire('Success', `${group.charAt(0).toUpperCase() + group.slice(1)} pricing updated to ${discount}% discount`, 'success');
+  // Validate discount
+  if (!discount || isNaN(discount) || parseInt(discount) < 0 || parseInt(discount) > 100) {
+    Swal.fire('Error', 'Discount must be between 0 and 100', 'error');
+    return;
+  }
+  
+  try {
+    const response = await fetch('/api/admin/pricing/groups/update', {
+      method: 'POST',
+      credentials: 'include',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        group: group,
+        discount: parseInt(discount)
+      })
+    });
+    
+    const data = await response.json();
+    
+    if (data.success) {
+      // Update local pricing data
+      pricingData[group] = { ...pricingData[group], discount: parseInt(discount) };
+      
+      // Refresh users display to show updated pricing
+      if (allUsersData && allUsersData.length > 0) {
+        sortAndDisplayUsers('newest');
+      }
+      
+      Swal.fire('Success', data.message || `${group.charAt(0).toUpperCase() + group.slice(1)} discount updated to ${discount}%`, 'success');
+    } else {
+      Swal.fire('Error', data.error || 'Failed to update pricing', 'error');
+    }
+  } catch (error) {
+    console.error('Error updating pricing group:', error);
+    Swal.fire('Error', 'Failed to update pricing: ' + error.message, 'error');
+  }
 }
 
 

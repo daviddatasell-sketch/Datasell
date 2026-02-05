@@ -3912,14 +3912,18 @@ app.post('/api/purchase-data', requireAuth, async (req, res) => {
       });
     }
 
-    // Get user tier and calculate discount
+    // Get user tier and calculate discount from database
     const userTier = userData.pricingGroup || 'regular';
-    const tierDiscounts = {
-      'regular': 0,
-      'premium': 5,
-      'vip': 10
+    
+    // Fetch pricing from database
+    const pricingSnapshot = await admin.database().ref('pricingGroups').once('value');
+    const pricingData = pricingSnapshot.val() || {
+      regular: { discount: 0, name: 'Regular Users' },
+      vip: { discount: 10, name: 'VIP Users' },
+      premium: { discount: 15, name: 'Premium Users' }
     };
-    const discountPercent = tierDiscounts[userTier] || 0;
+    
+    const discountPercent = pricingData[userTier]?.discount || 0;
     const discountAmount = (amount * discountPercent) / 100;
     const finalAmount = amount - discountAmount;
     
@@ -4957,14 +4961,10 @@ app.post('/api/admin/users/:uid/set-tier', requireAdmin, async (req, res) => {
     const { uid } = req.params;
     const { tier } = req.body;
 
-    // Define available tiers with their discounts
-    const tiers = {
-      'regular': { discount: 0, displayName: 'Regular' },
-      'premium': { discount: 5, displayName: 'Premium (5% Discount)' },
-      'vip': { discount: 10, displayName: 'VIP (10% Discount)' }
-    };
-
-    if (!tier || !tiers[tier]) {
+    // Valid tier names
+    const validTiers = ['regular', 'premium', 'vip'];
+    
+    if (!tier || !validTiers.includes(tier)) {
       return res.status(400).json({ 
         success: false, 
         error: 'Invalid tier. Must be: regular, premium, or vip' 
@@ -4978,30 +4978,39 @@ app.post('/api/admin/users/:uid/set-tier', requireAdmin, async (req, res) => {
       return res.status(404).json({ success: false, error: 'User not found' });
     }
 
+    // Fetch pricing from database
+    const pricingSnapshot = await admin.database().ref('pricingGroups').once('value');
+    const pricingData = pricingSnapshot.val() || {
+      regular: { discount: 0, name: 'Regular Users' },
+      vip: { discount: 10, name: 'VIP Users' },
+      premium: { discount: 15, name: 'Premium Users' }
+    };
+
     const oldTier = user.pricingGroup || 'regular';
-    const tierInfo = tiers[tier];
+    const tierDiscount = pricingData[tier]?.discount || 0;
+    const tierName = pricingData[tier]?.name || tier.charAt(0).toUpperCase() + tier.slice(1);
 
     // Update user tier
     await admin.database().ref(`users/${uid}`).update({
       pricingGroup: tier,
       pricingTierUpdatedAt: new Date().toISOString(),
-      pricingTierDiscount: tierInfo.discount
+      pricingTierDiscount: tierDiscount
     });
 
     // Log admin action
     await admin.database().ref('adminLogs').push({
       adminId: req.session.user?.uid || 'system',
       action: 'set_user_tier',
-      details: `Changed user ${uid.substring(0, 8)}... tier from "${oldTier}" to "${tier}" (${tierInfo.discount}% discount)`,
+      details: `Changed user ${uid.substring(0, 8)}... tier from "${oldTier}" to "${tier}" (${tierDiscount}% discount)`,
       timestamp: new Date().toISOString(),
       ip: req.ip
     });
 
     res.json({ 
       success: true, 
-      message: `User tier updated to ${tierInfo.displayName}`,
+      message: `User tier updated to ${tierName} (${tierDiscount}% discount)`,
       tier: tier,
-      discount: tierInfo.discount
+      discount: tierDiscount
     });
   } catch (error) {
     console.error('Set tier error:', error);
