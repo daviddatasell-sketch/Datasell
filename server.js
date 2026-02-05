@@ -2192,6 +2192,47 @@ app.get('/api/admin/referral-counts', requireAdmin, async (req, res) => {
   }
 });
 
+// Get referral count for the authenticated user - how many users signed up with their code
+app.get('/api/referral-count', requireAuth, async (req, res) => {
+  try {
+    const uid = req.session.user.uid;
+    
+    // Get the user's referral code
+    const userSnapshot = await admin.database().ref('users/' + uid).once('value');
+    const user = userSnapshot.val();
+    
+    if (!user || !user.referralCode) {
+      return res.json({ success: true, count: 0, uniqueReferrers: 0 });
+    }
+    
+    const referralCode = user.referralCode;
+    
+    // Count how many users have referredBy === this user's referralCode
+    const allUsersSnapshot = await admin.database().ref('users').once('value');
+    const allUsers = allUsersSnapshot.val() || {};
+    
+    let count = 0;
+    const referrersSet = new Set();
+    
+    for (const [userId, userData] of Object.entries(allUsers)) {
+      if (userData.referredBy === referralCode) {
+        count++;
+        // For uniqueReferrers, we count the count of users (all different since referredBy is a code, not a user ID)
+      }
+    }
+    
+    res.json({ 
+      success: true, 
+      count: count,
+      uniqueReferrers: count, // All referrals are unique since each comes from a single code
+      referralCode: referralCode
+    });
+  } catch (error) {
+    console.error('Referral count error:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
 
 // Enhanced Logout
 app.post('/api/logout', (req, res) => {
