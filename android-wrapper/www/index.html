@@ -30,8 +30,8 @@
   </div>
 
   <script>
-    // Fallback: set the deployed URL to your Render site
-    const remote = 'https://datasell.onrender.com/';
+    // Fallback: set the deployed URL to datasell.store
+    const remote = 'https://datasell.store/';
 
     // Prefer to use the remote site's logo if reachable, otherwise use any bundled logo
     const remoteLogo = remote.replace(/\/$/, '') + '/images/web-logo2.png';
@@ -57,6 +57,7 @@
       // Prioritize development on port 3000 (emulator and localhost), then fall back to deployed remote
       const candidates = [
         remote,
+        'https://datasell.store/', // Production domain
         'http://10.0.2.2:3000/', // Android emulator -> host localhost:3000
         'http://localhost:3000/',
       ];

@@ -1335,6 +1335,8 @@
                                     <th>User ID</th>
                                     <th>Name</th>
                                     <th>Email</th>
+                                    <th>Referral Code</th>
+                                    <th>Ref Used</th>
                                     <th>Phone</th>
                                     <th>Balance</th>
                                     <th>Date Joined</th>
@@ -1344,7 +1346,7 @@
                             </thead>
                             <tbody id="usersTableBody">
                                 <tr>
-                                    <td colspan="8" class="text-center">Loading users...</td>
+                                    <td colspan="9" class="text-center">Loading users...</td>
                                 </tr>
                             </tbody>
                         </table>
@@ -1760,16 +1762,32 @@ function displayTopPackages(packages) {
 
 async function loadUsers() {
   try {
-    const response = await fetch('/api/admin/users', {
-      credentials: 'include'
-    });
+    const [usersResponse, countsResponse] = await Promise.all([
+      fetch('/api/admin/users', { credentials: 'include' }),
+      fetch('/api/admin/referral-counts', { credentials: 'include' })
+    ]);
     
-    const data = await response.json();
+    const usersData = await usersResponse.json();
+    const countsData = await countsResponse.json();
+    console.log('Users API Response:', usersData);
+    console.log('Referral Counts Response:', countsData);
     
-    if (data.success && data.users) {
-      allUsersData = data.users;
+    if (usersData.success && usersData.users) {
+      allUsersData = usersData.users;
+      
+      // Attach referral counts to each user
+      if (countsData.success && countsData.referralCounts) {
+        allUsersData = allUsersData.map(user => ({
+          ...user,
+          referralUsageCount: countsData.referralCounts[user.referralCode] || 0
+        }));
+      }
+      
+      console.log('Loaded users:', allUsersData.length);
       // Apply default "newest first" sorting
       sortAndDisplayUsers('newest');
+    } else {
+      console.error('API response missing success or users:', usersData);
     }
   } catch (error) {
     console.error('Error loading users:', error);
@@ -1778,7 +1796,7 @@ async function loadUsers() {
 
 function displayUsers(users) {
   if (!users || users.length === 0) {
-    document.getElementById('usersTableBody').innerHTML = '<tr><td colspan="8" style="text-align: center; padding: 20px;">No users found</td></tr>';
+    document.getElementById('usersTableBody').innerHTML = '<tr><td colspan="9" style="text-align: center; padding: 20px;">No users found</td></tr>';
     return;
   }
   
@@ -1795,6 +1813,7 @@ function displayUsers(users) {
         <td>${user.uid.substring(0, 8)}...</td>
         <td>${(user.firstName || '') + ' ' + (user.lastName || '')}</td>
         <td>${user.email || 'N/A'}</td>
+        <td><code style="background: #f3f4f6; padding: 4px 8px; border-radius: 4px; font-family: 'Courier New', monospace; font-weight: 700; color: #6c63ff;">${user.referralCode || 'N/A'}</code></td>
         <td>${user.phone || 'N/A'}</td>
         <td>₵${parseFloat(user.walletBalance || 0).toFixed(2)}</td>
         <td>${dateJoined}</td>
@@ -2441,6 +2460,8 @@ function sortAndDisplayUsers(sortBy) {
         <td>${user.uid.substring(0, 8)}...</td>
         <td>${(user.firstName || '') + ' ' + (user.lastName || '')}</td>
         <td>${user.email || 'N/A'}</td>
+        <td><code style="background: #f3f4f6; padding: 4px 8px; border-radius: 4px; font-family: 'Courier New', monospace; font-weight: 700; color: #6c63ff;">${user.referralCode || 'N/A'}</code></td>
+        <td style="text-align: center; font-weight: 700; color: #10b981;">${user.referralUsageCount || 0}</td>
         <td>${user.phone || 'N/A'}</td>
         <td>₵${parseFloat(user.walletBalance || 0).toFixed(2)}</td>
         <td>${dateJoined}</td>

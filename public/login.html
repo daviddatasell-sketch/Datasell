@@ -953,6 +953,8 @@ document.getElementById('loginForm').addEventListener('submit', async (e) => {
         submitBtn.innerHTML = '<i class="fas fa-spinner fa-spin me-2"></i>Signing in...';
         submitBtn.disabled = true;
         
+        console.log('📝 Login attempt:', { email, rememberMe });
+        
         const response = await fetch('/api/login', {
             method: 'POST',
             credentials: 'include',
@@ -960,18 +962,24 @@ document.getElementById('loginForm').addEventListener('submit', async (e) => {
             body: JSON.stringify({ email, password, rememberMe })
         });
         
+        console.log('📋 Login response status:', response.status);
         const data = await response.json();
+        console.log('📊 Login response:', { success: data.success, message: data.message });
         
         if (data.success) {
+            console.log('✅ Login successful, redirecting to dashboard...');
             notyf.success('✅ Login successful!');
-            setTimeout(() => window.location.href = '/dashboard', 1500);
+            // Redirect immediately without delay
+            window.location.href = '/dashboard';
         } else {
+            console.log('❌ Login failed:', data.error);
             notyf.error(data.error || 'Login failed');
+            submitBtn.innerHTML = originalText;
+            submitBtn.disabled = false;
         }
     } catch (error) {
-        console.error('Login error:', error);
+        console.error('❌ Login error:', error);
         notyf.error('An error occurred. Please try again.');
-    } finally {
         submitBtn.innerHTML = originalText;
         submitBtn.disabled = false;
     }
@@ -982,15 +990,27 @@ async function checkAuth() {
     try {
         const response = await fetch('/api/check-auth', { credentials: 'include' });
         const data = await response.json();
-        if (data.success && data.authenticated) {
+        console.log('🔍 Auth check result:', data);
+        
+        // Check for authenticated flag (different endpoints may have different response structures)
+        if (data.authenticated === true || (data.success && data.user)) {
+            console.log('✅ User already authenticated, redirecting to dashboard');
             window.location.href = '/dashboard';
         }
     } catch (error) {
+        console.log('ℹ️ Auth check failed (expected if not logged in):', error);
         // Not authenticated, stay on login page
     }
 }
 
-checkAuth();
+// Check auth on page load with a small delay to ensure cookies are ready
+if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', () => {
+        setTimeout(checkAuth, 100);
+    });
+} else {
+    setTimeout(checkAuth, 100);
+}
 </script>
 </body>
 </html>

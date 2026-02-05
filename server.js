@@ -422,7 +422,7 @@ app.use(session({
   secret: process.env.SESSION_SECRET,
   resave: false,
   saveUninitialized: false,
-  // FIXED: In development, allow HTTP cookies. In production, require HTTPS only.
+  // Changed session cookie secure flag to allow HTTP in development (secure: NODE_ENV === 'production')
   cookie: {
     secure: process.env.NODE_ENV === 'production', // Only require HTTPS in production
     httpOnly: true,
@@ -775,9 +775,47 @@ function validateEmail(email) {
   return { valid: true };
 }
 
+// Generate a unique 5-character alphanumeric referral code
+function generateReferralCode() {
+  const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
+  let code = '';
+  for (let i = 0; i < 5; i++) {
+    code += chars.charAt(Math.floor(Math.random() * chars.length));
+  }
+  return code;
+}
+
+// Generate unique referral code with database check
+async function generateUniqueReferralCode() {
+  let code;
+  let isUnique = false;
+  let attempts = 0;
+  const maxAttempts = 10;
+
+  while (!isUnique && attempts < maxAttempts) {
+    code = generateReferralCode();
+    const existingUser = await admin.database()
+      .ref('users')
+      .orderByChild('referralCode')
+      .equalTo(code)
+      .once('value');
+    
+    if (!existingUser.exists()) {
+      isUnique = true;
+    }
+    attempts++;
+  }
+
+  if (!isUnique) {
+    throw new Error('Failed to generate unique referral code after multiple attempts');
+  }
+
+  return code;
+}
+
 app.post('/api/signup', async (req, res) => {
   try {
-    const { email, password, firstName, lastName, phone, acceptedTerms } = req.body;
+    const { email, password, firstName, lastName, phone, acceptedTerms, referralCode } = req.body;
     
     // Validation
     if (!email || !password || !firstName || !lastName || !phone) {
@@ -873,8 +911,30 @@ app.post('/api/signup', async (req, res) => {
     // Hash password for database backup (always, regardless of auth method)
     const passwordHash = await bcrypt.hash(password, 10);
 
+    // Generate unique referral code for new user
+    const newUserReferralCode = await generateUniqueReferralCode();
+
+    // Validate referral code if provided
+    let referrerUid = null;
+    if (referralCode && referralCode.trim()) {
+      const referrerSnapshot = await admin.database()
+        .ref('users')
+        .orderByChild('referralCode')
+        .equalTo(referralCode.trim().toUpperCase())
+        .once('value');
+      
+      if (referrerSnapshot.exists()) {
+        const referrerData = referrerSnapshot.val();
+        referrerUid = Object.keys(referrerData)[0];
+        console.log(`✅ Valid referral code: ${referralCode} from user ${referrerUid}`);
+      } else {
+        console.warn(`⚠️ Invalid referral code provided: ${referralCode}`);
+        // Continue with signup but don't associate with referrer
+      }
+    }
+
     // Create/Update user in database
-    await admin.database().ref('users/' + uid).set({
+    const userData = {
       uid: uid,
       firstName: firstName.trim(),
       lastName: lastName.trim(),
@@ -888,8 +948,12 @@ app.post('/api/signup', async (req, res) => {
       suspended: false,
       lastLogin: null,
       authMethod: authMethod, // Track which auth system is used
-      signInMethod: 'email' // Track sign-in method (email vs google)
-    });
+      signInMethod: 'email', // Track sign-in method (email vs google)
+      referralCode: newUserReferralCode, // Assign referral code to new user
+      referredBy: referrerUid || null // Track who referred this user
+    };
+
+    await admin.database().ref('users/' + uid).set(userData);
 
     // Log registration
     await admin.database().ref('userLogs').push().set({
@@ -898,11 +962,13 @@ app.post('/api/signup', async (req, res) => {
       email: email.toLowerCase(),
       phone: normalizedPhone,
       authMethod: authMethod,
+      referralCode: newUserReferralCode,
+      referredBy: referrerUid || null,
       timestamp: new Date().toISOString(),
       ip: req.ip
     });
 
-    console.log(`✅ User registered successfully: ${email} (${uid}) via ${authMethod}`);
+    console.log(`✅ User registered successfully: ${email} (${uid}) via ${authMethod} | Referral Code: ${newUserReferralCode}`);
 
     res.json({ 
       success: true, 
@@ -1612,6 +1678,10 @@ app.get('/api/profile', requireAuth, async (req, res) => {
     const snap = await admin.database().ref('users/' + uid).once('value');
     const userData = snap.val() || {};
 
+    console.log(`📋 [/api/profile] Fetching profile for user: ${uid}`);
+    console.log(`📋 [/api/profile] User data keys:`, Object.keys(userData));
+    console.log(`📋 [/api/profile] referralCode value: ${userData.referralCode}`);
+
     const profile = {
       uid,
       firstName: userData.firstName || '',
@@ -1622,9 +1692,12 @@ app.get('/api/profile', requireAuth, async (req, res) => {
       createdAt: userData.createdAt || null,
       lastLogin: userData.lastLogin || null,
       isAdmin: userData.isAdmin || false,
-      pricingGroup: userData.pricingGroup || 'regular'
+      pricingGroup: userData.pricingGroup || 'regular',
+      referralCode: userData.referralCode || null,
+      referredBy: userData.referredBy || null
     };
 
+    console.log(`📋 [/api/profile] Returning profile with referralCode:`, profile.referralCode);
     res.json({ success: true, profile });
   } catch (err) {
     console.error('Get profile error:', err);
@@ -2052,22 +2125,73 @@ app.get('/api/admin/users', requireAdmin, async (req, res) => {
       const totalSpent = userTransactions.reduce((sum, t) => sum + (t.amount || 0), 0);
       
       return {
-        uid,
-        ...userData,
-        totalSpent,
+        uid: uid,
+        firstName: userData.firstName || '',
+        lastName: userData.lastName || '',
+        email: userData.email || '',
+        phone: userData.phone || '',
+        referralCode: userData.referralCode || 'N/A',
+        walletBalance: userData.walletBalance || 0,
+        createdAt: userData.createdAt || '',
+        pricingGroup: userData.pricingGroup || 'regular',
+        suspended: userData.suspended || false,
+        totalSpent: totalSpent,
         transactionCount: userTransactions.length,
         lastActivity: userData.lastLogin || userData.createdAt,
-        status: userData.suspended ? 'suspended' : 'active',
-        pricingGroup: userData.pricingGroup || 'regular'
+        status: userData.suspended ? 'suspended' : 'active'
       };
     });
 
+    console.log(`📊 [/api/admin/users] Returning ${usersArray.length} users`);
+    if (usersArray.length > 0) {
+      const sampleUser = usersArray[0];
+      console.log(`📊 [/api/admin/users] Sample user:`, {
+        uid: sampleUser.uid,
+        email: sampleUser.email,
+        phone: sampleUser.phone,
+        referralCode: sampleUser.referralCode
+      });
+    }
     res.json({ success: true, users: usersArray });
   } catch (error) {
     console.error('Admin users error:', error);
     res.status(500).json({ success: false, error: error.message });
   }
 });
+
+// Get referral usage count - tracks how many users signed up with each referral code
+app.get('/api/admin/referral-counts', requireAdmin, async (req, res) => {
+  try {
+    const usersSnapshot = await admin.database().ref('users').once('value');
+    const users = usersSnapshot.val() || {};
+
+    // Count referrals: for each user with a referralCode, count how many users have referredBy === that code
+    const referralCounts = {};
+    
+    for (const [uid, userData] of Object.entries(users)) {
+      if (userData.referralCode) {
+        referralCounts[userData.referralCode] = 0;
+      }
+    }
+
+    // Now count usage - count users where referredBy points to an existing referral code
+    for (const [uid, userData] of Object.entries(users)) {
+      if (userData.referredBy) {
+        // Find the user with this referralCode and increment their count
+        const referrer = Object.values(users).find(u => u.referralCode === userData.referredBy);
+        if (referrer && referrer.referralCode) {
+          referralCounts[referrer.referralCode] = (referralCounts[referrer.referralCode] || 0) + 1;
+        }
+      }
+    }
+
+    res.json({ success: true, referralCounts });
+  } catch (error) {
+    console.error('Referral counts error:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
 
 // Enhanced Logout
 app.post('/api/logout', (req, res) => {
@@ -5556,6 +5680,61 @@ app.get('/api/order-status/:transactionId', requireAuth, async (req, res) => {
     res.status(500).json({ 
       success: false, 
       error: 'Failed to fetch order status' 
+    });
+  }
+});
+
+// Assign referral codes to existing users (admin endpoint)
+app.post('/api/admin/assign-referral-codes', requireAuth, async (req, res) => {
+  try {
+    // Check if user is admin
+    const uid = req.session.user.uid;
+    const userSnapshot = await admin.database().ref('users/' + uid).once('value');
+    const user = userSnapshot.val();
+
+    if (!user || !user.isAdmin) {
+      return res.status(403).json({ 
+        success: false, 
+        error: 'Unauthorized - Admin access required' 
+      });
+    }
+
+    const usersSnapshot = await admin.database().ref('users').once('value');
+    const users = usersSnapshot.val() || {};
+    
+    let assigned = 0;
+    let skipped = 0;
+    const updates = {};
+
+    for (const [userId, userData] of Object.entries(users)) {
+      if (!userData.referralCode) {
+        // Generate unique referral code
+        const newCode = await generateUniqueReferralCode();
+        updates[`users/${userId}/referralCode`] = newCode;
+        assigned++;
+      } else {
+        skipped++;
+      }
+    }
+
+    // Apply all updates at once
+    if (Object.keys(updates).length > 0) {
+      await admin.database().ref().update(updates);
+    }
+
+    console.log(`✅ Referral codes assigned: ${assigned} users | Skipped: ${skipped} users (already have codes)`);
+
+    res.json({ 
+      success: true, 
+      message: `Referral codes assigned to ${assigned} users. ${skipped} users already had codes.`,
+      assigned,
+      skipped
+    });
+  } catch (error) {
+    console.error('Error assigning referral codes:', error);
+    res.status(500).json({ 
+      success: false, 
+      error: 'Failed to assign referral codes: ' + error.message
     });
   }
 });

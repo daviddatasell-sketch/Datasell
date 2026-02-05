@@ -832,6 +832,45 @@ body {
                 </ul>
             </div>
 
+            <!-- Referral Program -->
+            <div class="menu-section">
+                <h3 class="section-title">Referral Program</h3>
+                <!-- Referral Code Card -->
+                <div style="background: white; border-radius: 12px; padding: 1.5rem; margin-bottom: 1.5rem; box-shadow: 0 2px 8px rgba(0,0,0,0.1);">
+                    <div style="display: flex; align-items: center; gap: 1rem; margin-bottom: 1rem;">
+                        <div style="width: 50px; height: 50px; border-radius: 50%; background: linear-gradient(135deg, #ff6584, #ff8fa3); display: flex; align-items: center; justify-content: center; color: white;">
+                            <i class="fas fa-users" style="font-size: 1.5rem;"></i>
+                        </div>
+                        <div>
+                            <h4 style="margin: 0; font-weight: 700; color: #333; font-size: 1rem;">Your Referral Code</h4>
+                            <p style="margin: 0; color: #6c757d; font-size: 0.85rem;">Share and earn rewards</p>
+                        </div>
+                    </div>
+                    <div style="background: #f8f9fa; border-radius: 8px; padding: 1rem; margin-bottom: 1rem;">
+                        <p style="margin: 0 0 0.5rem 0; color: #6c757d; font-size: 0.9rem;"><strong>Your Code:</strong></p>
+                        <div style="display: flex; gap: 0.75rem; align-items: center; margin-bottom: 1rem;">
+                            <div style="flex: 1; background: white; border: 2px solid #6c63ff; border-radius: 8px; padding: 0.75rem; font-family: 'Courier New', monospace; font-weight: 700; font-size: 1.25rem; text-align: center; color: #6c63ff; letter-spacing: 2px;">
+                                <span id="userReferralCode">-</span>
+                            </div>
+                            <button type="button" class="btn btn-sm" style="background: #6c63ff; color: white; border: none; padding: 0.75rem 1rem; border-radius: 8px; cursor: pointer; font-weight: 600; transition: all 0.3s ease;" onclick="copyReferralCode()">
+                                <i class="fas fa-copy"></i> Copy
+                            </button>
+                        </div>
+                        <p style="margin: 0 0 0.75rem 0; color: #6c757d; font-size: 0.9rem;"><strong>Referral Link:</strong></p>
+                        <div style="display: flex; gap: 0.75rem; align-items: center;">
+                            <input type="text" id="referralLink" readonly style="flex: 1; background: white; border: 1px solid #e9ecef; border-radius: 8px; padding: 0.75rem; font-size: 0.85rem; color: #333;">
+                            <button type="button" class="btn btn-sm" style="background: #6c63ff; color: white; border: none; padding: 0.75rem 1rem; border-radius: 8px; cursor: pointer; font-weight: 600; transition: all 0.3s ease;" onclick="copyReferralLink()">
+                                <i class="fas fa-copy"></i> Copy
+                            </button>
+                            <button type="button" class="btn btn-sm" style="background: #25D366; color: white; border: none; padding: 0.75rem 1rem; border-radius: 8px; cursor: pointer; font-weight: 600; transition: all 0.3s ease;" onclick="shareReferralLink()">
+                                <i class="fab fa-whatsapp"></i> Share
+                            </button>
+                        </div>
+                        <p style="margin: 0.75rem 0 0 0; color: #6c757d; font-size: 0.85rem;">Share this link with friends to earn rewards!</p>
+                    </div>
+                </div>
+            </div>
+
             <!-- Support -->
             <div class="menu-section">
                 <h3 class="section-title">Support</h3>
@@ -1232,6 +1271,9 @@ body {
             
             // Display profile picture if available, otherwise show initials
             displayProfilePicture();
+            
+            // Display referral code
+            displayReferralCode();
         }
 
         // Get user initials
@@ -1612,6 +1654,56 @@ body {
         function triggerFileInput(e) {
             e.preventDefault();
             document.getElementById('profilePictureInput').click();
+        }
+
+        // Referral Code Functions
+        function displayReferralCode() {
+            if (userProfile && userProfile.referralCode) {
+                document.getElementById('userReferralCode').textContent = userProfile.referralCode;
+                const baseUrl = window.location.origin;
+                const referralLink = `${baseUrl}/signup?ref=${userProfile.referralCode}`;
+                document.getElementById('referralLink').value = referralLink;
+            }
+        }
+
+        function copyReferralCode() {
+            const code = document.getElementById('userReferralCode').textContent;
+            if (code && code !== '-') {
+                navigator.clipboard.writeText(code).then(() => {
+                    // Show success notification
+                    if (typeof Notyf !== 'undefined') {
+                        notyf.success('Referral code copied to clipboard!');
+                    } else {
+                        alert('Referral code copied: ' + code);
+                    }
+                }).catch(() => {
+                    alert('Failed to copy. Your code is: ' + code);
+                });
+            }
+        }
+
+        function copyReferralLink() {
+            const link = document.getElementById('referralLink').value;
+            if (link) {
+                navigator.clipboard.writeText(link).then(() => {
+                    if (typeof Notyf !== 'undefined') {
+                        notyf.success('Referral link copied to clipboard!');
+                    } else {
+                        alert('Referral link copied!');
+                    }
+                }).catch(() => {
+                    alert('Failed to copy. Your link is: ' + link);
+                });
+            }
+        }
+
+        function shareReferralLink() {
+            const link = document.getElementById('referralLink').value;
+            if (link) {
+                const message = `Hey! Join DataSell and get amazing data deals! 🚀 Use my referral code or click this link: ${link}`;
+                const whatsappUrl = `https://api.whatsapp.com/send?text=${encodeURIComponent(message)}`;
+                window.open(whatsappUrl, '_blank');
+            }
         }
 
         // Initialize app when page loads
