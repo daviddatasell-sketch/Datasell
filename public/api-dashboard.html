@@ -1,0 +1,712 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>API Keys Management - Datasell Integration Portal</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      min-height: 100vh;
+      padding: 20px;
+    }
+
+    .container {
+      max-width: 1100px;
+      margin: 0 auto;
+    }
+
+    .header {
+      background: white;
+      padding: 30px;
+      border-radius: 10px;
+      margin-bottom: 30px;
+      box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+    }
+
+    .header h1 {
+      color: #667eea;
+      margin-bottom: 10px;
+      font-size: 28px;
+    }
+
+    .header p {
+      color: #666;
+      font-size: 14px;
+    }
+
+    .section {
+      background: white;
+      border-radius: 10px;
+      padding: 30px;
+      margin-bottom: 25px;
+      box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+    }
+
+    .section h2 {
+      color: #333;
+      margin-bottom: 20px;
+      font-size: 20px;
+      border-bottom: 2px solid #667eea;
+      padding-bottom: 10px;
+    }
+
+    /* Form Styles */
+    .form-group {
+      margin-bottom: 15px;
+    }
+
+    .form-group label {
+      display: block;
+      margin-bottom: 8px;
+      color: #333;
+      font-weight: 500;
+      font-size: 14px;
+    }
+
+    .form-group input,
+    .form-group select,
+    .form-group textarea {
+      width: 100%;
+      padding: 12px;
+      border: 1px solid #ddd;
+      border-radius: 6px;
+      font-size: 14px;
+      transition: border-color 0.3s;
+    }
+
+    .form-group input:focus,
+    .form-group select:focus,
+    .form-group textarea:focus {
+      outline: none;
+      border-color: #667eea;
+      box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+    }
+
+    .form-row {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 15px;
+    }
+
+    .form-actions {
+      display: flex;
+      gap: 10px;
+      margin-top: 20px;
+    }
+
+    button {
+      padding: 12px 24px;
+      border: none;
+      border-radius: 6px;
+      font-size: 14px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.3s;
+    }
+
+    .btn-primary {
+      background: #667eea;
+      color: white;
+      flex: 1;
+    }
+
+    .btn-primary:hover {
+      background: #5568d3;
+      transform: translateY(-2px);
+      box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
+    }
+
+    .btn-primary:active {
+      transform: translateY(0);
+    }
+
+    .btn-secondary {
+      background: #f0f0f0;
+      color: #333;
+    }
+
+    .btn-secondary:hover {
+      background: #e0e0e0;
+    }
+
+    .btn-small {
+      padding: 8px 16px;
+      font-size: 13px;
+    }
+
+    .btn-danger {
+      background: #ef4444;
+      color: white;
+    }
+
+    .btn-danger:hover {
+      background: #dc2626;
+    }
+
+    .btn-warning {
+      background: #f59e0b;
+      color: white;
+    }
+
+    .btn-warning:hover {
+      background: #d97706;
+    }
+
+    /* Table Styles */
+    .table-container {
+      overflow-x: auto;
+      margin-top: 20px;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 14px;
+    }
+
+    table thead {
+      background: #f8f9fa;
+      border-bottom: 2px solid #dee2e6;
+    }
+
+    table th {
+      padding: 15px;
+      text-align: left;
+      color: #333;
+      font-weight: 600;
+    }
+
+    table td {
+      padding: 15px;
+      border-bottom: 1px solid #dee2e6;
+      color: #666;
+    }
+
+    table tr:hover {
+      background: #f8f9fa;
+    }
+
+    .table-actions {
+      display: flex;
+      gap: 8px;
+    }
+
+    /* Badge Styles */
+    .badge {
+      display: inline-block;
+      padding: 6px 12px;
+      border-radius: 20px;
+      font-size: 12px;
+      font-weight: 600;
+    }
+
+    .badge-active {
+      background: #d1fae5;
+      color: #065f46;
+    }
+
+    .badge-revoked {
+      background: #fee2e2;
+      color: #991b1b;
+    }
+
+    .badge-expired {
+      background: #fef3c7;
+      color: #92400e;
+    }
+
+    /* Code Display */
+    .code-block {
+      background: #f5f5f5;
+      border: 1px solid #e0e0e0;
+      border-radius: 6px;
+      padding: 15px;
+      font-family: 'Monaco', 'Courier New', monospace;
+      font-size: 13px;
+      overflow-x: auto;
+      margin: 15px 0;
+      word-break: break-all;
+    }
+
+    .code-label {
+      font-size: 12px;
+      color: #666;
+      margin-bottom: 8px;
+      font-weight: 500;
+    }
+
+    /* Alert/Message Styles */
+    .alert {
+      padding: 15px;
+      border-radius: 6px;
+      margin-bottom: 20px;
+      font-size: 14px;
+      display: none;
+    }
+
+    .alert.show {
+      display: block;
+    }
+
+    .alert-success {
+      background: #d1fae5;
+      color: #065f46;
+      border: 1px solid #6ee7b7;
+    }
+
+    .alert-error {
+      background: #fee2e2;
+      color: #991b1b;
+      border: 1px solid #fca5a5;
+    }
+
+    .alert-info {
+      background: #dbeafe;
+      color: #0c4a6e;
+      border: 1px solid #7dd3fc;
+    }
+
+    .alert-warning {
+      background: #fef3c7;
+      color: #92400e;
+      border: 1px solid #fcd34d;
+    }
+
+    /* Loading State */
+    .loading {
+      display: inline-block;
+      width: 12px;
+      height: 12px;
+      border: 2px solid #667eea;
+      border-top-color: transparent;
+      border-radius: 50%;
+      animation: spin 0.6s linear infinite;
+      margin-right: 8px;
+    }
+
+    @keyframes spin {
+      to { transform: rotate(360deg); }
+    }
+
+    /* Responsive Design */
+    @media (max-width: 768px) {
+      .form-row {
+        grid-template-columns: 1fr;
+      }
+
+      .table-actions {
+        flex-direction: column;
+      }
+
+      .table-actions button {
+        width: 100%;
+      }
+
+      table {
+        font-size: 12px;
+      }
+
+      table th,
+      table td {
+        padding: 10px;
+      }
+
+      .badge {
+        font-size: 11px;
+      }
+    }
+
+    /* Modal Overlay */
+    .modal {
+      display: none;
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background: rgba(0, 0, 0, 0.5);
+      z-index: 1000;
+      justify-content: center;
+      align-items: center;
+    }
+
+    .modal.show {
+      display: flex;
+    }
+
+    .modal-content {
+      background: white;
+      border-radius: 10px;
+      padding: 30px;
+      max-width: 500px;
+      width: 90%;
+      box-shadow: 0 20px 25px rgba(0, 0, 0, 0.15);
+    }
+
+    .modal-header {
+      font-size: 18px;
+      font-weight: 600;
+      margin-bottom: 20px;
+      color: #333;
+    }
+
+    .modal-body {
+      margin-bottom: 20px;
+      color: #666;
+      font-size: 14px;
+    }
+
+    .modal-actions {
+      display: flex;
+      gap: 10px;
+      justify-content: flex-end;
+    }
+
+    /* Empty State */
+    .empty-state {
+      text-align: center;
+      padding: 40px 20px;
+      color: #999;
+    }
+
+    .empty-state-icon {
+      font-size: 48px;
+      margin-bottom: 15px;
+    }
+
+    .empty-state p {
+      font-size: 14px;
+      margin-bottom: 20px;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <!-- Header -->
+    <div class="header">
+      <h1>🔑 API Integration Portal</h1>
+      <p>Manage your API keys and integrate with the Datasell platform</p>
+    </div>
+
+    <!-- Alerts -->
+    <div id="successAlert" class="alert alert-success"></div>
+    <div id="errorAlert" class="alert alert-error"></div>
+    <div id="infoAlert" class="alert alert-info"></div>
+
+    <!-- Create API Key Section -->
+    <div class="section">
+      <h2>Create New API Key</h2>
+      <form id="createKeyForm">
+        <div class="form-row">
+          <div class="form-group">
+            <label for="integrationName">Integration Name *</label>
+            <input type="text" id="integrationName" name="integrationName" 
+                   placeholder="e.g., Mobile App, Website, CRM" required>
+          </div>
+          <div class="form-group">
+            <label for="expiryDays">Expiration Period</label>
+            <select id="expiryDays" name="expiryDays">
+              <option value="30">30 Days</option>
+              <option value="90">90 Days</option>
+              <option value="180">180 Days</option>
+              <option value="365" selected>1 Year</option>
+              <option value="3650">10 Years</option>
+              <option value="0">Never Expires</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label for="integrationDescription">Description (Optional)</label>
+          <textarea id="integrationDescription" name="integrationDescription"
+                    placeholder="Add notes about this integration..."
+                    rows="3"></textarea>
+        </div>
+
+        <div class="form-actions">
+          <button type="submit" class="btn-primary">Generate API Key</button>
+        </div>
+      </form>
+    </div>
+
+    <!-- API Keys List Section -->
+    <div class="section">
+      <h2>Your API Keys</h2>
+      <div id="keysContainer" class="table-container">
+        <div class="empty-state">
+          <div class="empty-state-icon">🔓</div>
+          <p>No API keys created yet</p>
+          <p style="font-size: 12px; color: #bbb;">Create your first API key above to get started</p>
+        </div>
+      </div>
+    </div>
+
+    <!-- API Documentation Link -->
+    <div class="section">
+      <h2>📚 Documentation & Support</h2>
+      <p style="margin-bottom: 15px;">
+        For complete API documentation, integration guides, and code examples:
+      </p>
+      <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 15px;">
+        <a href="/api/v1/docs" target="_blank" class="btn-secondary" style="text-align: center; text-decoration: none; display: block; padding: 15px;">
+          📖 REST API Documentation
+        </a>
+        <a href="/api/v1/status" class="btn-secondary" style="text-align: center; text-decoration: none; display: block; padding: 15px;">
+          🔗 API Status Check
+        </a>
+      </div>
+      <p style="margin-top: 20px; font-size: 13px; color: #666;">
+        <strong>Note:</strong> Comprehensive API documentation files are available in the project repository: API_DOCUMENTATION.md, API_INTEGRATION_GUIDE.md, API_QUICK_START.md
+      </p>
+    </div>
+  </div>
+
+  <!-- Modal for displaying new key -->
+  <div id="keyModal" class="modal">
+    <div class="modal-content">
+      <div class="modal-header">🎉 API Key Created Successfully</div>
+      <div class="modal-body">
+        <p style="margin-bottom: 15px; font-weight: 600; color: #991b1b;">
+          ⚠️ Copy this key now - it will only be shown once!
+        </p>
+        <div class="code-label">Your API Key:</div>
+        <div class="code-block" id="apiKeyDisplay"></div>
+        <p style="margin-top: 15px; font-size: 12px; color: #666;">
+          Use this key in your API requests with the <code>X-API-Key</code> header or <code>Authorization: Bearer</code>.
+        </p>
+        <p style="margin-top: 10px; font-size: 12px; color: #666;">
+          <strong>Integration:</strong> <span id="integrationNameDisplay"></span>
+        </p>
+        <p style="margin-top: 10px; font-size: 12px; color: #666;">
+          <strong>Expires:</strong> <span id="expiryDisplay"></span>
+        </p>
+      </div>
+      <div class="modal-actions">
+        <button class="btn-primary" onclick="copyToClipboard()">📋 Copy Key</button>
+        <button class="btn-secondary" onclick="closeKeyModal()">Done</button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const API_BASE = '/api/v1';
+    let currentApiKey = null;
+
+    // Show alert messages
+    function showAlert(message, type = 'info') {
+      const alertElement = document.getElementById(`${type}Alert`);
+      alertElement.textContent = message;
+      alertElement.classList.add('show');
+      setTimeout(() => alertElement.classList.remove('show'), 5000);
+    }
+
+    // Create API Key
+    document.getElementById('createKeyForm').addEventListener('submit', async (e) => {
+      e.preventDefault();
+
+      const formData = {
+        integrationName: document.getElementById('integrationName').value,
+        integrationDescription: document.getElementById('integrationDescription').value,
+        expiryDays: Number(document.getElementById('expiryDays').value)
+      };
+
+      try {
+        const response = await fetch(`${API_BASE}/keys/create`, {
+          method: 'POST',
+          credentials: 'include',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(formData)
+        });
+
+        const data = await response.json();
+
+        if (data.success) {
+          currentApiKey = data.apiKey;
+          document.getElementById('apiKeyDisplay').textContent = data.apiKey;
+          document.getElementById('integrationNameDisplay').textContent = data.keyData.integrationName;
+          document.getElementById('expiryDisplay').textContent = new Date(data.keyData.expiresAt).toLocaleDateString();
+          document.getElementById('keyModal').classList.add('show');
+          
+          // Reset form
+          e.target.reset();
+          
+          // Reload keys
+          setTimeout(loadKeys, 1500);
+        } else {
+          showAlert(`Error: ${data.message}`, 'error');
+        }
+      } catch (error) {
+        console.error('Error creating API key:', error);
+        showAlert('Failed to create API key. Please try again.', 'error');
+      }
+    });
+
+    // Load and display API keys
+    async function loadKeys() {
+      try {
+        const response = await fetch(`${API_BASE}/keys/my-keys`, {
+          credentials: 'include'
+        });
+        const result = await response.json();
+
+        if (!result.data || result.data.length === 0) {
+          document.getElementById('keysContainer').innerHTML = `
+            <div class="empty-state">
+              <div class="empty-state-icon">🔓</div>
+              <p>No API keys created yet</p>
+              <p style="font-size: 12px; color: #bbb;">Create your first API key above to get started</p>
+            </div>
+          `;
+          return;
+        }
+
+        const html = `
+          <table>
+            <thead>
+              <tr>
+                <th>Integration</th>
+                <th>API Key</th>
+                <th>Status</th>
+                <th>Created</th>
+                <th>Expires</th>
+                <th>Requests</th>
+                <th>Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${result.data.map(key => `
+                <tr>
+                  <td><strong>${key.integrationName}</strong></td>
+                  <td><code>${key.masked}</code></td>
+                  <td>
+                    <span class="badge badge-${key.status === 'revoked' ? 'revoked' : 'active'}">
+                      ${key.status === 'revoked' ? '❌ Revoked' : '✅ Active'}
+                    </span>
+                  </td>
+                  <td>${new Date(key.createdAt).toLocaleDateString()}</td>
+                  <td>${key.expiresAt ? new Date(key.expiresAt).toLocaleDateString() : 'Never'}</td>
+                  <td>${key.requestCount || 0}</td>
+                  <td>
+                    <div class="table-actions">
+                      ${key.status === 'active' ? `
+                        <button class="btn-secondary btn-small" onclick="regenerateKey('${key.id}')">🔄 Regenerate</button>
+                        <button class="btn-danger btn-small" onclick="revokeKey('${key.id}')">⛔ Revoke</button>
+                      ` : `
+                        <button class="btn-secondary btn-small" onclick="deleteKey('${key.id}')" style="color: #999;">🗑️ Delete</button>
+                      `}
+                    </div>
+                  </td>
+                </tr>
+              `).join('')}
+            </tbody>
+          </table>
+        `;
+
+        document.getElementById('keysContainer').innerHTML = html;
+      } catch (error) {
+        console.error('Error loading API keys:', error);
+        showAlert('Failed to load API keys', 'error');
+      }
+    }
+
+    // Regenerate API Key
+    async function regenerateKey(keyId) {
+      if (!confirm('Regenerate this API key?\nYour current key will stop working immediately.')) return;
+
+      try {
+        const response = await fetch(`${API_BASE}/keys/${keyId}/regenerate`, {
+          method: 'POST',
+          credentials: 'include'
+        });
+
+        const data = await response.json();
+
+        if (data.success) {
+          currentApiKey = data.apiKey;
+          document.getElementById('apiKeyDisplay').textContent = data.apiKey;
+          document.getElementById('keyModal').classList.add('show');
+          showAlert('API key regenerated successfully', 'success');
+          setTimeout(loadKeys, 1500);
+        } else {
+          showAlert(`Error: ${data.message}`, 'error');
+        }
+      } catch (error) {
+        console.error('Error regenerating API key:', error);
+        showAlert('Failed to regenerate API key', 'error');
+      }
+    }
+
+    // Revoke API Key
+    async function revokeKey(keyId) {
+      if (!confirm('Revoke this API key?\nIt will stop working immediately and cannot be undone.')) return;
+
+      try {
+        const response = await fetch(`${API_BASE}/keys/${keyId}/revoke`, {
+          method: 'POST',
+          credentials: 'include'
+        });
+
+        const data = await response.json();
+
+        if (data.success) {
+          showAlert('API key revoked successfully', 'success');
+          loadKeys();
+        } else {
+          showAlert(`Error: ${data.message}`, 'error');
+        }
+      } catch (error) {
+        console.error('Error revoking API key:', error);
+        showAlert('Failed to revoke API key', 'error');
+      }
+    }
+
+    // Delete API Key
+    async function deleteKey(keyId) {
+      if (!confirm('Delete this API key? This action cannot be undone.')) return;
+
+      try {
+        const response = await fetch(`${API_BASE}/keys/${keyId}`, {
+          method: 'DELETE',
+          credentials: 'include'
+        });
+
+        const data = await response.json();
+
+        if (data.success) {
+          showAlert('API key deleted successfully', 'success');
+          loadKeys();
+        } else {
+          showAlert(`Error: ${data.message}`, 'error');
+        }
+      } catch (error) {
+        console.error('Error deleting API key:', error);
+        showAlert('Failed to delete API key', 'error');
+      }
+    }
+
+    // Copy to Clipboard
+    function copyToClipboard() {
+      if (!currentApiKey) return;
+      navigator.clipboard.writeText(currentApiKey).then(() => {
+        showAlert('API key copied to clipboard!', 'success');
+      });
+    }
+
+    // Close Key Modal
+    function closeKeyModal() {
+      document.getElementById('keyModal').classList.remove('show');
+    }
+
+    // Load keys on page load
+    document.addEventListener('DOMContentLoaded', loadKeys);
+  </script>
+</body>
+</html>

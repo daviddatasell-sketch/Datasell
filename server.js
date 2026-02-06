@@ -44,6 +44,12 @@ const session = require('express-session');
 const bcrypt = require('bcryptjs');
 const cors = require('cors');
 const nodemailer = require('nodemailer');
+const APIConfig = require('./api/config');
+const APIKeyGenerator = require('./api/key-generator');
+const APIKeyManager = require('./api/manager');
+const APIMiddleware = require('./api/middleware');
+const apiRoutes = require('./api/routes');
+const userAPIRoutes = require('./api/user-routes');
 const { validatePhoneSignup, validatePhoneOrder, logBlockedPhoneAttempt } = require('./phone-blocking-system');
 const { validateGhanianPhone, toInternationalFormat } = require('./ghana-phone-validator');
 // rate limiting removed per request
@@ -238,6 +244,10 @@ try {
     });
     firebaseInitialized = true;
     console.log('✅ Firebase Admin initialized successfully');
+    
+    // Store Firebase database reference for API middleware
+    app.set('firebaseDb', admin.database());
+    console.log('✅ Firebase database reference set for API system');
   }
 } catch (error) {
   console.error('❌ CRITICAL: Firebase initialization failed:', error.message);
@@ -464,6 +474,54 @@ const corsOptions = {
 app.use(cors(corsOptions));
 
 // ============================================
+// API INTEGRATION SYSTEM - DATASELL AGENT PORTAL
+// ============================================
+// Mount dashboard API key management routes FIRST (requires session auth, not API key)
+console.log('🔐 Mounting API integration system with authentication...');
+
+// User dashboard API key management routes (requires session authentication only)
+app.use('/api/v1/keys', (req, res, next) => {
+  // Dashboard routes require session authentication
+  console.log('🔑 Dashboard auth check:', {
+    hasSession: !!req.session,
+    hasUser: !!req.session?.user,
+    userId: req.session?.user?.uid || 'none',
+    sessionId: req.sessionID,
+    path: req.path,
+    method: req.method
+  });
+
+  if (req.session && req.session.user) {
+    // Attach user info for dashboard routes
+    req.user = req.session.user;
+    console.log('✅ Dashboard authenticated:', req.user.uid);
+    return next();
+  }
+  // Not authenticated
+  console.log('❌ Dashboard auth failed - returning 401');
+  res.status(401).json({
+    error: true,
+    message: 'Authentication required',
+    code: 'NOT_AUTHENTICATED'
+  });
+}, userAPIRoutes);
+
+// Mount public API routes with API key authentication
+app.use('/api/v1',
+  APIMiddleware.validateAPIKeyFormat,        // Validate API key format
+  APIMiddleware.rateLimitMiddleware,         // Apply rate limiting (60/min, 1000/hour)
+  APIMiddleware.authenticateAPIKey,         // Verify API key against database
+  APIMiddleware.logAPIRequest,               // Log all API calls to database
+  apiRoutes                                  // Mount core API endpoints
+);
+
+// API error handlers (must be after route definitions) - ONLY for /api/v1 routes
+app.use('/api/v1', APIMiddleware.errorHandler);
+app.use('/api/v1', APIMiddleware.notFoundHandler);
+
+console.log('✅ API integration system mounted on /api/v1');
+
+// ============================================
 // SESSION TIMEOUT & INACTIVITY MIDDLEWARE
 // ============================================
 // Auto-logout users after 30 minutes of inactivity
@@ -663,6 +721,11 @@ app.get('/', (req, res) => {
 app.get('/dashboard', requireAuth, (req, res) => {
   // Serve authenticated dashboard to logged-in users
   res.sendFile(path.join(__dirname, 'public', 'dashboard.html'));
+});
+
+app.get('/api-dashboard', requireAuth, (req, res) => {
+  // Serve API key management dashboard
+  res.sendFile(path.join(__dirname, 'public', 'api-dashboard.html'));
 });
 
 app.get('/login', (req, res) => {
@@ -4143,7 +4206,7 @@ app.post('/api/purchase-data', requireAuth, async (req, res) => {
 
     // Notify user that payment/order is received and processing
     try {
-      const notifyMsg = `Order received. Your ${packageName} will be delivered to ${phoneNumber} within 1 to 30 minutes. If any troubles contact support on datasellgh@gmail.com`;
+      const notifyMsg = `MTN Packages are currently out of stock, we are working tirelessly with MTN to restock so kindly bare with us`;
       await sendSmsToUser(userId, phoneNumber, notifyMsg);
       console.log('📩 Order-created SMS sent for transaction', transactionId);
     } catch (smsErr) {
