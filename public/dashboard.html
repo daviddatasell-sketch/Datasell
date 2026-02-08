@@ -1548,25 +1548,26 @@ body {
                         minute: '2-digit'
                     });
                     
-                    // Check if purchase is less than 1 hour old
+                    // Check if purchase is less than 6 hours old
                     const currentTime = new Date().getTime();
                     const purchaseTimeMs = purchaseTime.getTime();
                     const timeDiffMs = currentTime - purchaseTimeMs;
-                    const oneHourMs = 60 * 60 * 1000; // 1 hour in milliseconds
-                    const isRecentPurchase = timeDiffMs < oneHourMs;
+                    const sixHoursMs = 6 * 60 * 60 * 1000; // 6 hours in milliseconds
+                    const isRecentPurchase = timeDiffMs < sixHoursMs;
                     
                     let statusClass = 'status-success';
                     let statusText = 'Delivered';
 
                     if (purchase.status) {
-                        if (purchase.status === 'Accepted' || purchase.status === 'pending') {
+                        const statusLower = (purchase.status || '').toLowerCase();
+                        if (statusLower === 'accepted' || statusLower === 'pending') {
                             statusClass = 'status-pending';
                             statusText = 'Pending';
-                        } else if (purchase.status === 'Processing') {
+                        } else if (statusLower === 'processing') {
                             statusClass = 'status-pending';
                             statusText = 'Processing';
-                        } else if (purchase.status === 'Delivered' || purchase.status === 'success') {
-                            // If purchase is less than 1 hour old, show Processing, otherwise Delivered
+                        } else if (statusLower === 'delivered' || statusLower === 'success') {
+                            // If purchase is less than 6 hours old, show Processing, otherwise Delivered
                             if (isRecentPurchase) {
                                 statusClass = 'status-pending';
                                 statusText = 'Processing';

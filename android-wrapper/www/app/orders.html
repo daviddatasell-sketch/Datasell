@@ -801,6 +801,32 @@ body {
             return 'Pending';
         }
 
+        // Toggle order status between processing and delivered (admin function)
+        async function toggleOrderStatus(transactionId, orderId) {
+            if (!confirm('Toggle this order status?')) return;
+            
+            try {
+                const response = await fetch('/api/admin/toggle-order-status', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ transactionId })
+                });
+                
+                const data = await response.json();
+                
+                if (!response.ok) {
+                    alert('Error: ' + (data.error || 'Failed to toggle status'));
+                    return;
+                }
+                
+                alert(`Status toggled to: ${data.newStatus}`);
+                location.reload(); // Refresh to show updated status
+            } catch (error) {
+                console.error('Toggle error:', error);
+                alert('Failed to toggle status: ' + error.message);
+            }
+        }
+
         function filterOrders() {
             const phoneSearch = document.getElementById('searchPhone').value.trim().toLowerCase();
             const referenceSearch = document.getElementById('searchReference').value.trim().toLowerCase();
@@ -881,6 +907,7 @@ body {
                             <div class="order-amount">₵${order.amount != null ? Number(order.amount).toLocaleString() : '0'}</div>
                             <div class="order-status status-${statusClass}">
                                 ${statusDisplay}
+                                <button class="btn btn-sm btn-outline-secondary ms-2" onclick="toggleOrderStatus('${order.id}', '${order.id}')" style="font-size: 0.75rem; padding: 0.25rem 0.5rem;">⟲ Toggle</button>
                             </div>
                         </div>
                     </div>

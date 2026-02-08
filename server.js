@@ -5788,6 +5788,59 @@ app.get('/api/order-status/:transactionId', requireAuth, async (req, res) => {
   }
 });
 
+// Manual toggle endpoint - ADMIN ONLY - toggle order status between processing and delivered
+// SAFE: Only admins can use, only affects status field, no other data touched
+app.post('/api/admin/toggle-order-status', requireAdmin, async (req, res) => {
+  try {
+    const { transactionId } = req.body;
+    
+    if (!transactionId) {
+      return res.status(400).json({ 
+        success: false, 
+        error: 'Transaction ID is required' 
+      });
+    }
+    
+    const transactionRef = admin.database().ref(`transactions/${transactionId}`);
+    const snapshot = await transactionRef.once('value');
+    const transaction = snapshot.val();
+    
+    if (!transaction) {
+      return res.status(404).json({ 
+        success: false, 
+        error: 'Order not found' 
+      });
+    }
+    
+    // Toggle between processing and delivered
+    const currentStatus = (transaction.status || '').toLowerCase();
+    const newStatus = currentStatus === 'processing' ? 'delivered' : 'processing';
+    
+    // Update ONLY the status field - atomic operation
+    await transactionRef.update({
+      status: newStatus,
+      statusToggledAt: Date.now(),
+      statusToggledBy: req.session.user.uid
+    });
+    
+    console.log(`✅ [ADMIN-TOGGLE] Order ${transactionId} status toggled: ${currentStatus} → ${newStatus} by ${req.session.user.uid}`);
+    
+    res.json({ 
+      success: true, 
+      message: `Status toggled to ${newStatus}`,
+      transactionId,
+      newStatus,
+      timestamp: new Date().toISOString()
+    });
+  } catch (error) {
+    console.error('Error toggling order status:', error);
+    res.status(500).json({ 
+      success: false, 
+      error: 'Failed to toggle order status' 
+    });
+  }
+});
+
 // Assign referral codes to existing users (admin endpoint)
 app.post('/api/admin/assign-referral-codes', requireAuth, async (req, res) => {
   try {
