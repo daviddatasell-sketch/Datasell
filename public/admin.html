@@ -1705,7 +1705,7 @@ function displayRecentActivity(activities) {
   
   const html = activities.slice(0, 5).map(item => {
     const icon = item.type === 'payment' ? '💳' : '📊';
-    const statusColor = item.status === 'success' ? '#10b981' : item.status === 'pending' ? '#f59e0b' : '#ef4444';
+    const statusColor = (item.status === 'success' || item.status === 'delivered') ? '#10b981' : item.status === 'pending' ? '#f59e0b' : '#ef4444';
     
     return `
       <div style="padding: 1rem; border-bottom: 1px solid var(--border-color); display: flex; align-items: center; gap: 1rem;">
@@ -2289,7 +2289,7 @@ function displayRecentActivity(activity) {
         <div style="flex: 1;">
           <p style="margin: 0; font-size: 14px; font-weight: 500;">${item.description} <span style="color: #6b7280; font-weight: 400;">by ${item.userName}</span></p>
           <p style="margin: 4px 0 0 0; font-size: 12px; color: #6b7280;">
-            ${timestamp} • Amount: ₵${parseFloat(item.amount || 0).toFixed(2)} • Status: <span style="color: ${item.status === 'success' ? '#10b981' : item.status === 'pending' ? '#f59e0b' : '#ef4444'}">${item.status}</span>
+            ${timestamp} • Amount: ₵${parseFloat(item.amount || 0).toFixed(2)} • Status: <span style="color: ${(item.status === 'success' || item.status === 'delivered') ? '#10b981' : item.status === 'pending' ? '#f59e0b' : '#ef4444'}">${item.status}</span>
           </p>
         </div>
       </div>
@@ -2338,7 +2338,7 @@ function displayDeposits(deposits) {
   
   const html = deposits.map(deposit => {
     const timestamp = new Date(deposit.timestamp).toLocaleString();
-    const statusColor = deposit.status === 'success' ? '#10b981' : deposit.status === 'pending' ? '#f59e0b' : '#ef4444';
+    const statusColor = (deposit.status === 'success' || deposit.status === 'delivered') ? '#10b981' : deposit.status === 'pending' ? '#f59e0b' : '#ef4444';
     const statusText = deposit.status.charAt(0).toUpperCase() + deposit.status.slice(1);
     
     return `
@@ -2833,7 +2833,7 @@ async function loadTransactions() {
           <td>${t.network || 'N/A'}</td>
           <td>${t.phoneNumber || t.phone || 'N/A'}</td>
           <td>₵${parseFloat(t.amount || 0).toFixed(2)}</td>
-          <td><span style="color: ${t.status === 'success' ? '#10b981' : t.status === 'failed' ? '#ef4444' : '#f59e0b'}">${t.status || 'unknown'}</span></td>
+          <td><span style="color: ${(t.status === 'success' || t.status === 'delivered') ? '#10b981' : t.status === 'failed' ? '#ef4444' : '#f59e0b'}">${t.status || 'unknown'}</span></td>
           <td>${new Date(t.timestamp).toLocaleDateString()}</td>
           <td>
             <button class="btn btn-sm" onclick="viewTransactionDetails('${t.id}')">Details</button>

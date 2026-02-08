@@ -874,8 +874,31 @@ body {
                 const sixHoursMs = 6 * 60 * 60 * 1000; // 6 hours in milliseconds
                 const isRecentPurchase = timeDiffMs < sixHoursMs;
                 
-                const statusClass = isRecentPurchase ? 'status-pending' : 'status-success';
-                const statusText = isRecentPurchase ? 'Processing' : 'Delivered';
+                let statusClass = 'status-success';
+                let statusText = 'Delivered';
+                
+                // Check actual status field
+                if (lastPurchase.status) {
+                    const statusLower = (lastPurchase.status || '').toLowerCase();
+                    if (statusLower === 'processing') {
+                        // If processing, check 6-hour timer
+                        if (isRecentPurchase) {
+                            statusClass = 'status-pending';
+                            statusText = 'Processing';
+                        } else {
+                            statusClass = 'status-success';
+                            statusText = 'Delivered';
+                        }
+                    } else if (statusLower === 'delivered' || statusLower === 'success') {
+                        // If explicitly set to delivered or success, always show as Delivered
+                        statusClass = 'status-success';
+                        statusText = 'Delivered';
+                    }
+                } else {
+                    // If no status, use time-based logic
+                    statusClass = isRecentPurchase ? 'status-pending' : 'status-success';
+                    statusText = isRecentPurchase ? 'Processing' : 'Delivered';
+                }
                 
                 lastPurchaseContent.innerHTML = `
                     <div class="recent-purchase" onclick="window.location.href='/orders'">

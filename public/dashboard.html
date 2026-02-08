@@ -1564,10 +1564,7 @@ body {
                             statusClass = 'status-pending';
                             statusText = 'Pending';
                         } else if (statusLower === 'processing') {
-                            statusClass = 'status-pending';
-                            statusText = 'Processing';
-                        } else if (statusLower === 'delivered' || statusLower === 'success') {
-                            // If purchase is less than 6 hours old, show Processing, otherwise Delivered
+                            // If processing, check 6-hour timer
                             if (isRecentPurchase) {
                                 statusClass = 'status-pending';
                                 statusText = 'Processing';
@@ -1575,6 +1572,11 @@ body {
                                 statusClass = 'status-success';
                                 statusText = 'Delivered';
                             }
+                        } else if (statusLower === 'delivered' || statusLower === 'success') {
+                            // If explicitly set to delivered or success, always show as Delivered (green)
+                            // This respects admin manual toggles
+                            statusClass = 'status-success';
+                            statusText = 'Delivered';
                         } else {
                             statusClass = 'status-pending';
                             statusText = purchase.status;
