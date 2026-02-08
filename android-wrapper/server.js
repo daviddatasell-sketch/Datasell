@@ -1587,7 +1587,7 @@ app.post('/api/purchase-data', requireAuth, async (req, res) => {
 
     // Notify user that payment/order is received and processing
     try {
-      const notifyMsg = `MTN Packages are currently out of stock, we are working tirelessly with MTN to restock so kindly bare with us`;
+      const notifyMsg = `Order received. Your ${packageName} will be delivered to ${phoneNumber} within 1 to 30 minutes. If any troubles contact support on datasellgh@gmail.com`;
       await sendSmsToUser(userId, phoneNumber, notifyMsg);
       console.log('📩 Order-created SMS sent for transaction', transactionId);
     } catch (smsErr) {
