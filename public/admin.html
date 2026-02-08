@@ -2835,7 +2835,10 @@ async function loadTransactions() {
           <td>₵${parseFloat(t.amount || 0).toFixed(2)}</td>
           <td><span style="color: ${t.status === 'success' ? '#10b981' : t.status === 'failed' ? '#ef4444' : '#f59e0b'}">${t.status || 'unknown'}</span></td>
           <td>${new Date(t.timestamp).toLocaleDateString()}</td>
-          <td><button class="btn btn-sm" onclick="viewTransactionDetails('${t.id}')">Details</button></td>
+          <td>
+            <button class="btn btn-sm" onclick="viewTransactionDetails('${t.id}')">Details</button>
+            <button class="btn btn-sm btn-outline-secondary ms-2" onclick="adminToggleOrderStatus('${t.id}')" style="padding: 4px 8px; font-size: 12px;">⟲ Toggle</button>
+          </td>
         </tr>
       `}).join('');
     } else {
@@ -2854,6 +2857,32 @@ function viewTransactionDetails(transactionId) {
     text: `Transaction ID: ${transactionId}`,
     icon: 'info'
   });
+}
+
+// Admin Toggle Order Status Function
+async function adminToggleOrderStatus(transactionId) {
+  if (!confirm('Toggle this order status?')) return;
+  
+  try {
+    const response = await fetch('/api/admin/toggle-order-status', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ transactionId })
+    });
+    
+    const data = await response.json();
+    
+    if (!response.ok) {
+      Swal.fire('Error', data.error || 'Failed to toggle status', 'error');
+      return;
+    }
+    
+    Swal.fire('Success!', `Status toggled to: ${data.newStatus}`, 'success');
+    loadTransactions(); // Reload the table
+  } catch (error) {
+    console.error('Toggle error:', error);
+    Swal.fire('Error', 'Failed to toggle status: ' + error.message, 'error');
+  }
 }
 
 // Load Pricing Groups Function

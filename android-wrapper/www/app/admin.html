@@ -1273,6 +1273,9 @@
                             <button class="btn btn-sm btn-info" onclick="viewTransactionDetails('${tx.id}')">
                                 <i class="fas fa-info"></i>
                             </button>
+                            <button class="btn btn-sm btn-outline-secondary" onclick="adminToggleOrderStatus('${tx.id}')" style="padding: 4px 8px; font-size: 12px;">
+                                ⟲ Toggle
+                            </button>
                         </div>
                     </td>
                 </tr>
@@ -1894,6 +1897,36 @@
                 console.error('View transaction error:', err);
                 Swal.close();
                 showError('Failed to load transaction details');
+            }
+        }
+
+        // Admin Toggle Order Status Function
+        async function adminToggleOrderStatus(transactionId) {
+            if (!confirm('Toggle this order status?')) return;
+            
+            try {
+                showLoading();
+                const response = await fetch('/api/admin/toggle-order-status', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ transactionId }),
+                    credentials: 'include'
+                });
+                
+                const data = await response.json();
+                Swal.close();
+                
+                if (!response.ok) {
+                    showError(data.error || 'Failed to toggle status');
+                    return;
+                }
+                
+                Swal.fire('Success!', `Status toggled to: ${data.newStatus}`, 'success');
+                loadTransactions(); // Reload the table
+            } catch (error) {
+                Swal.close();
+                console.error('Toggle error:', error);
+                showError('Failed to toggle status: ' + error.message);
             }
         }
 
