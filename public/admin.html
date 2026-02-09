@@ -1710,7 +1710,7 @@ function displayRecentActivity(activities) {
   
   const html = activities.slice(0, 5).map(item => {
     const icon = item.type === 'payment' ? '💳' : '📊';
-    const statusColor = (item.status === 'success' || item.status === 'delivered') ? '#10b981' : item.status === 'pending' ? '#f59e0b' : '#ef4444';
+    const statusColor = (item.status === 'success' || item.status === 'delivered' || item.status === 'processing') ? '#10b981' : item.status === 'pending' ? '#f59e0b' : '#ef4444';
     
     return `
       <div style="padding: 1rem; border-bottom: 1px solid var(--border-color); display: flex; align-items: center; gap: 1rem;">
