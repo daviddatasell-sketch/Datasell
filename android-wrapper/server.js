@@ -1631,7 +1631,7 @@ app.post('/api/purchase-data', requireAuth, async (req, res) => {
       await userRef.update({ walletBalance: newBalance });
 
       await transactionRef.update({
-        status: 'success',
+        status: 'processing',
         transactionId: processedHubnetData.transaction_id,
         hubnetTransactionId: processedHubnetData.transaction_id,
         hubnetResponse: processedHubnetData

@@ -4246,7 +4246,7 @@ app.post('/api/purchase-data', requireAuth, async (req, res) => {
 
       const purchaseData = datamartData.data;
       await transactionRef.update({
-        status: 'success',
+        status: 'processing',
         transactionId: purchaseData.purchaseId || purchaseData.transactionReference,
         datamartTransactionId: purchaseData.purchaseId || purchaseData.transactionReference,
         datamartResponse: purchaseData
