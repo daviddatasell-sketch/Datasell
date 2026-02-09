@@ -1341,6 +1341,11 @@
                                     <th>Balance</th>
                                     <th>Date Joined</th>
                                     <th>Pricing Tier</th>
+                                    <th>
+                                        <button class="btn btn-sm btn-info" onclick="toggleAllUsersTier()" title="Bulk assign pricing tier to all users">
+                                            <i class="fas fa-users"></i> Toggle All
+                                        </button>
+                                    </th>
                                     <th>Actions</th>
                                 </tr>
                             </thead>
@@ -1796,7 +1801,7 @@ async function loadUsers() {
 
 function displayUsers(users) {
   if (!users || users.length === 0) {
-    document.getElementById('usersTableBody').innerHTML = '<tr><td colspan="9" style="text-align: center; padding: 20px;">No users found</td></tr>';
+    document.getElementById('usersTableBody').innerHTML = '<tr><td colspan="11" style="text-align: center; padding: 20px;">No users found</td></tr>';
     return;
   }
   
@@ -1822,6 +1827,7 @@ function displayUsers(users) {
             ${tierDisplay}
           </button>
         </td>
+        <td></td>
         <td>
           <button onclick="manageUserFunds('${user.uid}')" style="padding: 6px 12px; background: #10b981; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 12px; font-weight: 600;">Funds</button>
         </td>
@@ -2012,6 +2018,64 @@ async function setPricingTier(userId) {
   } catch (error) {
     console.error('Error updating tier:', error);
     Swal.fire('Error', 'Failed to update tier', 'error');
+  }
+}
+
+// Toggle All Users Pricing Tier
+async function toggleAllUsersTier() {
+  if (!allUsersData || allUsersData.length === 0) {
+    Swal.fire('Error', 'No users found', 'error');
+    return;
+  }
+
+  // Build input options from current pricing data
+  const inputOptions = {
+    'regular': `Regular (${pricingData.regular?.discount || 0}% Discount)`,
+    'premium': `Premium (${pricingData.premium?.discount || 15}% Discount)`,
+    'vip': `VIP (${pricingData.vip?.discount || 10}% Discount)`
+  };
+  
+  const { value: selectedTier } = await Swal.fire({
+    title: `Update Pricing Tier for All Users`,
+    html: `<p>This will assign <strong>${allUsersData.length} users</strong> to the selected tier.</p><p>Are you sure you want to continue?</p>`,
+    input: 'select',
+    inputOptions: inputOptions,
+    showCancelButton: true,
+    confirmButtonText: 'Update All Users',
+    confirmButtonColor: '#ef4444',
+    preConfirm: (value) => {
+      if (!value) {
+        Swal.showValidationMessage('Please select a tier');
+        return false;
+      }
+      return value;
+    }
+  });
+
+  if (!selectedTier) return;
+
+  try {
+    const response = await fetch('/api/admin/users/bulk-set-tier', {
+      method: 'POST',
+      credentials: 'include',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({ tier: selectedTier })
+    });
+
+    const result = await response.json();
+
+    if (result.success) {
+      Swal.fire('Success', `Updated ${result.updatedCount || allUsersData.length} users to ${selectedTier.toUpperCase()} tier`, 'success');
+      // Reload users to show updated tiers
+      loadUsers();
+    } else {
+      Swal.fire('Error', result.error || 'Failed to update tiers', 'error');
+    }
+  } catch (error) {
+    console.error('Error updating tiers:', error);
+    Swal.fire('Error', 'Failed to update tiers', 'error');
   }
 }
 

@@ -5246,6 +5246,78 @@ app.post('/api/admin/users/:uid/set-tier', requireAdmin, async (req, res) => {
   }
 });
 
+// Bulk Update User Pricing Tier (all users)
+app.post('/api/admin/users/bulk-set-tier', requireAdmin, async (req, res) => {
+  try {
+    const { tier } = req.body;
+
+    // Valid tier names
+    const validTiers = ['regular', 'premium', 'vip'];
+    
+    if (!tier || !validTiers.includes(tier)) {
+      return res.status(400).json({ 
+        success: false, 
+        error: 'Invalid tier. Must be: regular, premium, or vip' 
+      });
+    }
+
+    // Get all users
+    const usersSnapshot = await admin.database().ref('users').once('value');
+    const users = usersSnapshot.val() || {};
+
+    if (Object.keys(users).length === 0) {
+      return res.status(400).json({ success: false, error: 'No users found' });
+    }
+
+    // Fetch pricing from database
+    const pricingSnapshot = await admin.database().ref('pricingGroups').once('value');
+    const pricingData = pricingSnapshot.val() || {
+      regular: { discount: 0, name: 'Regular Users' },
+      vip: { discount: 10, name: 'VIP Users' },
+      premium: { discount: 15, name: 'Premium Users' }
+    };
+
+    const tierDiscount = pricingData[tier]?.discount || 0;
+    const tierName = pricingData[tier]?.name || tier.charAt(0).toUpperCase() + tier.slice(1);
+    const updateTime = new Date().toISOString();
+    let updatedCount = 0;
+
+    // Update all users in batch
+    const updates = {};
+    for (const uid in users) {
+      updates[`users/${uid}/pricingGroup`] = tier;
+      updates[`users/${uid}/pricingTierUpdatedAt`] = updateTime;
+      updates[`users/${uid}/pricingTierDiscount`] = tierDiscount;
+      updatedCount++;
+    }
+
+    // Apply batch update
+    await admin.database().ref().update(updates);
+
+    // Log admin action
+    await admin.database().ref('adminLogs').push({
+      adminId: req.session.user?.uid || 'system',
+      action: 'bulk_set_user_tier',
+      details: `Bulk updated ${updatedCount} users to "${tier}" tier (${tierDiscount}% discount)`,
+      timestamp: updateTime,
+      ip: req.ip
+    });
+
+    console.log(`✅ [BULK TIER UPDATE] Updated ${updatedCount} users to ${tier} tier (${tierDiscount}% discount)`);
+
+    res.json({ 
+      success: true, 
+      message: `Updated ${updatedCount} users to ${tierName} (${tierDiscount}% discount)`,
+      updatedCount: updatedCount,
+      tier: tier,
+      discount: tierDiscount
+    });
+  } catch (error) {
+    console.error('Bulk set tier error:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
 // Admin System Status
 app.get('/api/admin/system/status', requireAdmin, async (req, res) => {
   try {

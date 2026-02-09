@@ -792,11 +792,18 @@
 
         let currentUser = null;
         let userBalance = 0;
+        let userTier = 'regular';
+        let userDiscount = 0;
         let selectedNetwork = null;
         let selectedPackage = null;
         let selectedPaymentMethod = 'wallet';
         let packages = [];
         let phoneModal = null;
+        let pricingData = {
+          regular: { discount: 0, name: 'Regular Users' },
+          vip: { discount: 10, name: 'VIP Users' },
+          premium: { discount: 15, name: 'Premium Users' }
+        };
 
         // Get URL parameters
         const urlParams = new URLSearchParams(window.location.search);
@@ -805,12 +812,20 @@
         // Initialize app
         async function initializeApp() {
             try {
+                // Load pricing data first
+                await loadPricingData();
+                
                 // Check authentication
                 const userResponse = await fetch('/api/user');
                 const userResult = await userResponse.json();
                 
                 if (userResult.success && userResult.user) {
                     currentUser = userResult.user;
+                    // Get user's pricing tier
+                    userTier = currentUser.pricingGroup || 'regular';
+                    // Get discount from loaded pricing data
+                    userDiscount = pricingData[userTier]?.discount || 0;
+                    console.log(`💳 User tier: ${userTier}, Discount: ${userDiscount}% (from database)`);
                     updateUserAvatar();
                     await loadWalletBalance();
                     
@@ -835,6 +850,24 @@
                 const names = currentUser.displayName.split(' ');
                 const initials = names.map(name => name[0]).join('').toUpperCase();
                 document.getElementById('userAvatar').textContent = initials;
+            }
+        }
+
+        // Load pricing data from database
+        async function loadPricingData() {
+            try {
+                const response = await fetch('/api/admin/pricing/groups');
+                const result = await response.json();
+                
+                if (result.success && result.pricingGroups) {
+                    pricingData = result.pricingGroups;
+                    console.log('✅ Pricing data loaded:', pricingData);
+                } else {
+                    console.warn('Failed to load pricing data, using defaults');
+                }
+            } catch (error) {
+                console.error('Failed to load pricing data:', error);
+                console.warn('Using default pricing data');
             }
         }
 
@@ -952,7 +985,27 @@
         }
 
         // Open phone modal when package is clicked
-        function openPhoneModal(packageId, packageName, price) {
+        async function openPhoneModal(packageId, packageName, price) {
+            // Reload user profile to get latest pricingGroup assignment (in case admin changed it)
+            try {
+                const userResponse = await fetch('/api/user');
+                const userResult = await userResponse.json();
+                if (userResult.success && userResult.user) {
+                    currentUser = userResult.user;
+                    userTier = currentUser.pricingGroup || 'regular';
+                    console.log(`💳 Refreshed user tier: ${userTier}`);
+                }
+            } catch (error) {
+                console.error('Failed to refresh user profile:', error);
+            }
+            
+            // Reload pricing data to get latest discount (in case admin changed it)
+            await loadPricingData();
+            
+            // Refresh user discount from updated pricing data
+            userDiscount = pricingData[userTier]?.discount || 0;
+            console.log(`💳 Refreshed discount for tier ${userTier}: ${userDiscount}%`);
+            
             // Find the package
             selectedPackage = packages.find(pkg => pkg.id === packageId);
             
@@ -961,9 +1014,18 @@
                 return;
             }
 
+            // Calculate discounted price if user has a tier
+            let displayPrice = price;
+            let priceLabel = `₵${price.toFixed(2)}`;
+            
+            if (userDiscount > 0) {
+                displayPrice = price - (price * userDiscount / 100);
+                priceLabel = `₵${displayPrice.toFixed(2)} (${userDiscount}% Discount)`;
+            }
+
             // Update preview
             document.getElementById('previewPackage').textContent = packageName;
-            document.getElementById('previewPrice').textContent = `₵${price.toFixed(2)}`;
+            document.getElementById('previewPrice').textContent = priceLabel;
 
             // Reset phone input
             document.getElementById('modalPhoneNumber').value = '';
@@ -1008,8 +1070,14 @@
             const confirmBtnText = document.getElementById('confirmBtnText');
             const confirmBtnLoading = document.getElementById('confirmBtnLoading');
 
+            // Calculate final price with discount
+            let finalPrice = selectedPackage.price;
+            if (userDiscount > 0) {
+                finalPrice = selectedPackage.price - (selectedPackage.price * userDiscount / 100);
+            }
+
             // Check balance
-            if (userBalance < selectedPackage.price) {
+            if (userBalance < finalPrice) {
                 notyf.error('Insufficient balance. Please fund your wallet.');
                 phoneModal.hide();
                 window.location.href = '/wallet';
@@ -1040,7 +1108,7 @@
                         network: selectedNetwork,
                         volume: volume,
                         phoneNumber: phoneNumber,
-                        amount: selectedPackage.price,
+                        amount: finalPrice,
                         packageName: selectedPackage.name
                     })
                 });

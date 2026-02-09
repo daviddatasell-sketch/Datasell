@@ -1136,6 +1136,19 @@
 
         // Open phone modal when package is clicked
         async function openPhoneModal(packageId, packageName, price) {
+            // Reload user profile to get latest pricingGroup assignment (in case admin changed it)
+            try {
+                const userResponse = await fetch('/api/user', { credentials: 'include' });
+                const userResult = await userResponse.json();
+                if (userResult.success && userResult.user) {
+                    currentUser = userResult.user;
+                    userTier = currentUser.pricingGroup || 'regular';
+                    console.log(`💳 Refreshed user tier: ${userTier}`);
+                }
+            } catch (error) {
+                console.error('Failed to refresh user profile:', error);
+            }
+            
             // Reload pricing data to get latest discount (in case admin changed it)
             await loadPricingData();
             
