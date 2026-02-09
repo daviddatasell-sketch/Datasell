@@ -1135,7 +1135,14 @@
         }
 
         // Open phone modal when package is clicked
-        function openPhoneModal(packageId, packageName, price) {
+        async function openPhoneModal(packageId, packageName, price) {
+            // Reload pricing data to get latest discount (in case admin changed it)
+            await loadPricingData();
+            
+            // Refresh user discount from updated pricing data
+            userDiscount = pricingData[userTier]?.discount || 0;
+            console.log(`💳 Refreshed discount for tier ${userTier}: ${userDiscount}%`);
+            
             // Find the package
             selectedPackage = packages.find(pkg => pkg.id === packageId);
             

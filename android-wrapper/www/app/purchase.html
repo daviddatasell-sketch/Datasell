@@ -1070,7 +1070,14 @@
         }
 
         // Open phone modal when package is clicked
-        function openPhoneModal(packageId, packageName, price) {
+        async function openPhoneModal(packageId, packageName, price) {
+            // Reload pricing data to get latest discount (in case admin changed it)
+            await loadPricingData();
+            
+            // Refresh user discount from updated pricing data
+            userDiscount = pricingData[userTier]?.discount || 0;
+            console.log(`💳 Refreshed discount for tier ${userTier}: ${userDiscount}%`);
+            
             // Find the package
             selectedPackage = packages.find(pkg => pkg.id === packageId);
             
@@ -1079,9 +1086,18 @@
                 return;
             }
 
+            // Calculate discounted price if user has a tier
+            let displayPrice = price;
+            let priceLabel = `₵${price.toFixed(2)}`;
+            
+            if (userDiscount > 0) {
+                displayPrice = price - (price * userDiscount / 100);
+                priceLabel = `₵${displayPrice.toFixed(2)} (${userDiscount}% Discount)`;
+            }
+
             // Update preview
             document.getElementById('previewPackage').textContent = packageName;
-            document.getElementById('previewPrice').textContent = `₵${price.toFixed(2)}`;
+            document.getElementById('previewPrice').textContent = priceLabel;
 
             // Reset phone input
             document.getElementById('modalPhoneNumber').value = '';
