@@ -2958,8 +2958,13 @@ async function loadPricingGroups() {
     if (data.success && data.pricingGroups) {
       pricingData = data.pricingGroups;
       document.getElementById('regularDiscount').value = data.pricingGroups.regular?.discount || 0;
-      document.getElementById('vipDiscount').value = data.pricingGroups.vip?.discount || 10;
-      document.getElementById('premiumDiscount').value = data.pricingGroups.premium?.discount || 15;
+      document.getElementById('vipDiscount').value = data.pricingGroups.vip?.discount || 3;
+      document.getElementById('premiumDiscount').value = data.pricingGroups.premium?.discount || 6;
+      
+      // Update badge displays with loaded data
+      updateBadge('regular');
+      updateBadge('vip');
+      updateBadge('premium');
     }
   } catch (error) {
     console.error('Error loading pricing:', error);
@@ -3101,8 +3106,8 @@ async function updatePricingGroup(group) {
     const data = await response.json();
     
     if (data.success) {
-      // Update local pricing data
-      pricingData[group] = { ...pricingData[group], discount: parseInt(discount) };
+      // Reload pricing data from server to ensure consistency
+      await loadPricingGroups();
       
       // Refresh users display to show updated pricing
       if (allUsersData && allUsersData.length > 0) {
