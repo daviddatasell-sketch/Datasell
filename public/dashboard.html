@@ -1548,18 +1548,34 @@ body {
                         minute: '2-digit'
                     });
                     
-                    // Show status based on actual status field only (no automatic timer logic)
+                    // Check if purchase is less than 7 hours old (for automatic fallback conversion)
+                    const currentTime = new Date().getTime();
+                    const purchaseTimeMs = purchaseTime.getTime();
+                    const timeDiffMs = currentTime - purchaseTimeMs;
+                    const sevenHoursMs = 7 * 60 * 60 * 1000; // 7 hours in milliseconds
+                    const isRecentPurchase = timeDiffMs < sevenHoursMs;
+                    
+                    // Show status based on actual status field, with 7-hour fallback for processing orders
                     let statusClass = 'status-pending';
                     let statusText = 'Processing';
 
                     if (purchase.status) {
                         const statusLower = (purchase.status || '').toLowerCase();
                         if (statusLower === 'delivered' || statusLower === 'success') {
+                            // Explicitly delivered/success - always show as delivered (respects admin toggles)
                             statusClass = 'status-success';
                             statusText = 'Delivered';
                         } else if (statusLower === 'processing') {
-                            statusClass = 'status-pending';
-                            statusText = 'Processing';
+                            // Processing - check 7-hour fallback timer
+                            if (isRecentPurchase) {
+                                // Less than 7 hours - still processing
+                                statusClass = 'status-pending';
+                                statusText = 'Processing';
+                            } else {
+                                // 7+ hours - auto-convert to delivered
+                                statusClass = 'status-success';
+                                statusText = 'Delivered';
+                            }
                         } else if (statusLower === 'failed') {
                             statusClass = 'status-pending';
                             statusText = 'Failed';
@@ -1568,6 +1584,15 @@ body {
                             statusText = 'Pending';
                         } else {
                             statusClass = 'status-pending';
+                            statusText = purchase.status;
+                        }
+                    } else {
+                        // If no status field, use 7-hour timer as fallback
+                        if (isRecentPurchase) {
+                            statusClass = 'status-pending';
+                            statusText = 'Processing';
+                        } else {
+                            statusClass = 'status-success';
                             statusText = 'Delivered';
                         }
                     }
