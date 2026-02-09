@@ -4984,6 +4984,23 @@ app.get('/api/admin/pricing/groups', requireAdmin, async (req, res) => {
   }
 });
 
+// PUBLIC: Get pricing groups (no auth required - for purchase page display)
+app.get('/api/pricing/groups', async (req, res) => {
+  try {
+    const pricingSnapshot = await admin.database().ref('pricingGroups').once('value');
+    const pricing = pricingSnapshot.val() || {
+      regular: { discount: 0, name: 'Regular Users' },
+      vip: { discount: 10, name: 'VIP Users' },
+      premium: { discount: 15, name: 'Premium Users' }
+    };
+
+    res.json({ success: true, pricingGroups: pricing });
+  } catch (error) {
+    console.error('Pricing groups error:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
 // Update pricing group discounts
 app.post('/api/admin/pricing/groups/update', requireAdmin, async (req, res) => {
   try {

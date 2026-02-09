@@ -1006,7 +1006,7 @@
         // Load pricing data from database
         async function loadPricingData() {
             try {
-                const response = await fetch('/api/admin/pricing/groups', { credentials: 'include' });
+                const response = await fetch('/api/pricing/groups', { credentials: 'include' });
                 const result = await response.json();
                 
                 if (result.success && result.pricingGroups) {
