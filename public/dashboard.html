@@ -1548,46 +1548,26 @@ body {
                         minute: '2-digit'
                     });
                     
-                    // Check if purchase is less than 6 hours old
-                    const currentTime = new Date().getTime();
-                    const purchaseTimeMs = purchaseTime.getTime();
-                    const timeDiffMs = currentTime - purchaseTimeMs;
-                    const sixHoursMs = 6 * 60 * 60 * 1000; // 6 hours in milliseconds
-                    const isRecentPurchase = timeDiffMs < sixHoursMs;
-                    
-                    let statusClass = 'status-success';
-                    let statusText = 'Delivered';
+                    // Show status based on actual status field only (no automatic timer logic)
+                    let statusClass = 'status-pending';
+                    let statusText = 'Processing';
 
                     if (purchase.status) {
                         const statusLower = (purchase.status || '').toLowerCase();
-                        if (statusLower === 'accepted' || statusLower === 'pending') {
-                            statusClass = 'status-pending';
-                            statusText = 'Pending';
-                        } else if (statusLower === 'processing') {
-                            // If processing, check 6-hour timer
-                            if (isRecentPurchase) {
-                                statusClass = 'status-pending';
-                                statusText = 'Processing';
-                            } else {
-                                statusClass = 'status-success';
-                                statusText = 'Delivered';
-                            }
-                        } else if (statusLower === 'delivered' || statusLower === 'success') {
-                            // If explicitly set to delivered or success, always show as Delivered (green)
-                            // This respects admin manual toggles
+                        if (statusLower === 'delivered' || statusLower === 'success') {
                             statusClass = 'status-success';
                             statusText = 'Delivered';
-                        } else {
-                            statusClass = 'status-pending';
-                            statusText = purchase.status;
-                        }
-                    } else {
-                        // If no status provided, use time-based logic
-                        if (isRecentPurchase) {
+                        } else if (statusLower === 'processing') {
                             statusClass = 'status-pending';
                             statusText = 'Processing';
+                        } else if (statusLower === 'failed') {
+                            statusClass = 'status-pending';
+                            statusText = 'Failed';
+                        } else if (statusLower === 'accepted' || statusLower === 'pending') {
+                            statusClass = 'status-pending';
+                            statusText = 'Pending';
                         } else {
-                            statusClass = 'status-success';
+                            statusClass = 'status-pending';
                             statusText = 'Delivered';
                         }
                     }
