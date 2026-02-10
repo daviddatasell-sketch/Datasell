@@ -1224,7 +1224,7 @@
                     <td>₵${tx.amount}</td>
                     <td>
                         <span class="badge ${getStatusBadgeClass(tx.status)}">
-                            ${tx.status}
+                            ${getDisplayStatus(tx.status)}
                         </span>
                     </td>
                     <td>${new Date(tx.timestamp).toLocaleDateString()}</td>
@@ -1250,11 +1250,20 @@
         function getStatusBadgeClass(status) {
             const statusClasses = {
                 'success': 'badge-success',
+                'delivered': 'badge-success',
+                'processing': 'badge-success',
                 'failed': 'badge-danger',
-                'processing': 'badge-warning',
                 'refunded': 'badge-info'
             };
             return statusClasses[status] || 'badge-info';
+        }
+
+        function getDisplayStatus(status) {
+            // Display "Success" for processing, delivered, or success
+            if (status === 'success' || status === 'delivered' || status === 'processing') {
+                return 'Success';
+            }
+            return status;
         }
 
         // System status

@@ -2880,7 +2880,7 @@ function addPackage() {
   });
 }
 
-// Load Transactions Function
+  // Load Transactions Function
 async function loadTransactions() {
   try {
     const response = await fetch('/api/admin/transactions', { credentials: 'include' });
@@ -2889,8 +2889,9 @@ async function loadTransactions() {
     if (data.success && data.transactions) {
       const tbody = document.getElementById('transactionsTableBody');
       tbody.innerHTML = data.transactions.map(t => {
-        // Determine Datamart status color - ONLY show actual Datamart status, not fallback
-        let datamartStatusColor = '#6b7280'; // default gray
+        // Display "Success" for processing, delivered, or success; otherwise show actual status
+        const displayStatus = (t.status === 'success' || t.status === 'delivered' || t.status === 'processing') ? 'Success' : t.status || 'unknown';
+        const statusColor = (t.status === 'success' || t.status === 'delivered' || t.status === 'processing') ? '#10b981' : t.status === 'failed' ? '#ef4444' : '#f59e0b';
         return `
         <tr>
           <td><code>${(t.reference || 'N/A').substring(0, 8)}</code></td>
@@ -2899,7 +2900,7 @@ async function loadTransactions() {
           <td>${t.network || 'N/A'}</td>
           <td>${t.phoneNumber || t.phone || 'N/A'}</td>
           <td>₵${parseFloat(t.amount || 0).toFixed(2)}</td>
-          <td><span style="color: ${(t.status === 'success' || t.status === 'delivered') ? '#10b981' : t.status === 'failed' ? '#ef4444' : '#f59e0b'}">${t.status || 'unknown'}</span></td>
+          <td><span style="color: ${statusColor}">${displayStatus}</span></td>
           <td>${new Date(t.timestamp).toLocaleDateString()}</td>
           <td>
             <button class="btn btn-sm" onclick="viewTransactionDetails('${t.id}')">Details</button>
