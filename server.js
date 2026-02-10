@@ -1809,16 +1809,16 @@ app.get('/api/profile/stats', requireAuth, async (req, res) => {
     // Filter transactions for this user
     const userTransactions = Object.values(allTransactions).filter(t => t.userId === uid);
     
+    // Count ALL orders (including processing, delivered, success, etc.)
+    const totalOrders = userTransactions.length;
+    
     // Count ONLY successful orders (delivered or success status)
-    const successfulTransactions = userTransactions.filter(transaction => 
+    const successfulOrders = userTransactions.filter(transaction => 
       transaction.status === 'delivered' || transaction.status === 'success'
-    );
+    ).length;
     
-    const totalOrders = successfulTransactions.length;
-    const totalSpent = successfulTransactions.reduce((sum, transaction) => sum + (transaction.amount || 0), 0);
-    
-    // Successful orders count (same as totalOrders now)
-    const successfulOrders = totalOrders;
+    // Total spent from ALL transactions
+    const totalSpent = userTransactions.reduce((sum, transaction) => sum + (transaction.amount || 0), 0);
     
     console.log(`📊 Stats - Total: ${totalOrders}, Successful: ${successfulOrders}, Spent: ₵${totalSpent}`);
     
@@ -2060,7 +2060,7 @@ app.get('/api/admin/dashboard/stats', requireAdmin, async (req, res) => {
       topPackages,
       networkStats,
       successRate: transactionsArray.length > 0 ? 
-        (transactionsArray.filter(t => t.status === 'success').length / transactionsArray.length * 100).toFixed(1) : 0
+        (transactionsArray.filter(t => t.status === 'success' || t.status === 'delivered').length / transactionsArray.length * 100).toFixed(1) : 0
     };
 
     res.json({ success: true, stats });
@@ -5349,7 +5349,7 @@ app.get('/api/admin/system/status', requireAdmin, async (req, res) => {
     ).length;
     
     const successfulTransactions = Object.values(transactions).filter(t => 
-      t.status === 'completed' && new Date(t.timestamp || 0).getTime() > oneDayAgo
+      (t.status === 'delivered' || t.status === 'success') && new Date(t.timestamp || 0).getTime() > oneDayAgo
     ).length;
     const successRate = recentTransactions > 0 ? Math.round((successfulTransactions / recentTransactions) * 100) : 0;
 

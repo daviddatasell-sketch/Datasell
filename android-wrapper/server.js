@@ -945,18 +945,20 @@ app.get('/api/profile/stats', requireAuth, async (req, res) => {
   try {
     const uid = req.session.user.uid;
     
-    // Get total spent from orders (ONLY successful orders)
-    const ordersSnap = await admin.database().ref('orders').orderByChild('userId').equalTo(uid).once('value');
-    const allOrders = ordersSnap.val() || {};
+    // Get transactions (not orders) to match main server
+    const transactionsSnap = await admin.database().ref('transactions').once('value');
+    const allTransactions = Object.values(transactionsSnap.val() || {}).filter(t => t.userId === uid);
     
-    // Filter for successful orders only (status: 'delivered' or 'success')
-    const successfulOrders = Object.values(allOrders).filter(order => 
+    // Count ALL orders (including processing, delivered, success, etc.)
+    const totalOrders = allTransactions.length;
+    
+    // Count ONLY successful orders (delivered or success status)
+    const successfulOrders = allTransactions.filter(order => 
       order.status === 'delivered' || order.status === 'success'
-    );
+    ).length;
     
-    const totalOrders = successfulOrders.length;
-    const totalSpent = successfulOrders.reduce((sum, order) => sum + (order.amount || 0), 0);
-    const successfulCount = totalOrders;
+    // Total spent from ALL transactions
+    const totalSpent = allTransactions.reduce((sum, order) => sum + (order.amount || 0), 0);
     
     // Get wallet info
     const userSnap = await admin.database().ref('users/' + uid).once('value');
@@ -966,7 +968,7 @@ app.get('/api/profile/stats', requireAuth, async (req, res) => {
 
     const stats = {
       totalOrders,
-      successfulOrders: successfulCount,
+      successfulOrders,
       totalSpent,
       walletBalance,
       accountStatus,
@@ -1849,7 +1851,7 @@ app.get('/api/admin/dashboard/stats', requireAdmin, async (req, res) => {
       topPackages,
       networkStats,
       successRate: transactionsArray.length > 0 ? 
-        (transactionsArray.filter(t => t.status === 'success').length / transactionsArray.length * 100).toFixed(1) : 0
+        (transactionsArray.filter(t => t.status === 'success' || t.status === 'delivered').length / transactionsArray.length * 100).toFixed(1) : 0
     };
 
     res.json({ success: true, stats });
@@ -2624,7 +2626,7 @@ app.get('/api/admin/system/status', requireAdmin, async (req, res) => {
     );
 
     const successRate = recentTransactions.length > 0 ? 
-      (recentTransactions.filter(t => t.status === 'success').length / recentTransactions.length * 100).toFixed(1) : 100;
+      (recentTransactions.filter(t => t.status === 'success' || t.status === 'delivered').length / recentTransactions.length * 100).toFixed(1) : 100;
 
     const systemStatus = {
       hubnet: hubnetStatus,
