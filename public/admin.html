@@ -1711,13 +1711,15 @@ function displayRecentActivity(activities) {
   const html = activities.slice(0, 5).map(item => {
     const icon = item.type === 'payment' ? '💳' : '📊';
     const statusColor = (item.status === 'success' || item.status === 'delivered' || item.status === 'processing') ? '#10b981' : item.status === 'pending' ? '#f59e0b' : '#ef4444';
+    // Display "Success" for any order with processing, delivered, or success status
+    const displayStatus = (item.status === 'success' || item.status === 'delivered' || item.status === 'processing') ? 'Success' : item.status || 'pending';
     
     return `
       <div style="padding: 1rem; border-bottom: 1px solid var(--border-color); display: flex; align-items: center; gap: 1rem;">
         <span style="font-size: 1.5rem;">${icon}</span>
         <div style="flex: 1;">
           <p style="margin: 0; font-weight: 600;">${item.description || 'Transaction'} <span style="color: #6b7280; font-weight: 400;">by ${item.userName || 'Unknown'}</span></p>
-          <p style="margin: 0.25rem 0 0 0; color: #6b7280; font-size: 0.875rem;">₵${item.amount || 0} • Status: <span style="color: ${statusColor}; font-weight: 600;">${item.status || 'pending'}</span></p>
+          <p style="margin: 0.25rem 0 0 0; color: #6b7280; font-size: 0.875rem;">₵${item.amount || 0} • Status: <span style="color: ${statusColor}; font-weight: 600;">${displayStatus}</span></p>
           <p style="margin: 0.25rem 0 0 0; color: #6b7280; font-size: 0.75rem;">${new Date(item.timestamp).toLocaleString()}</p>
         </div>
       </div>

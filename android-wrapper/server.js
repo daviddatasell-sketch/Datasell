@@ -952,9 +952,9 @@ app.get('/api/profile/stats', requireAuth, async (req, res) => {
     // Count ALL orders (including processing, delivered, success, etc.)
     const totalOrders = allTransactions.length;
     
-    // Count ONLY successful orders (delivered or success status)
+    // Count successful orders (delivered, success, AND processing - they're treated as successful)
     const successfulOrders = allTransactions.filter(order => 
-      order.status === 'delivered' || order.status === 'success'
+      order.status === 'delivered' || order.status === 'success' || order.status === 'processing'
     ).length;
     
     // Total spent from ALL transactions
@@ -1836,7 +1836,7 @@ app.get('/api/admin/dashboard/stats', requireAdmin, async (req, res) => {
       totalRevenue,
       netRevenue: parseFloat(netRevenue.toFixed(2)),
       totalPaystackFees: parseFloat(totalPaystackFees.toFixed(2)),
-      successfulTransactions: transactionsArray.filter(t => t.status === 'success').length,
+      successfulTransactions: transactionsArray.filter(t => t.status === 'success' || t.status === 'delivered').length,
       todayTransactions: todayTransactions.length,
       todayRevenue,
       todayNetRevenue: parseFloat(todayNetRevenue.toFixed(2)),
@@ -1851,7 +1851,7 @@ app.get('/api/admin/dashboard/stats', requireAdmin, async (req, res) => {
       topPackages,
       networkStats,
       successRate: transactionsArray.length > 0 ? 
-        (transactionsArray.filter(t => t.status === 'success' || t.status === 'delivered').length / transactionsArray.length * 100).toFixed(1) : 0
+        (transactionsArray.filter(t => t.status === 'success' || t.status === 'delivered' || t.status === 'processing').length / transactionsArray.length * 100).toFixed(1) : 0
     };
 
     res.json({ success: true, stats });
@@ -2626,7 +2626,7 @@ app.get('/api/admin/system/status', requireAdmin, async (req, res) => {
     );
 
     const successRate = recentTransactions.length > 0 ? 
-      (recentTransactions.filter(t => t.status === 'success' || t.status === 'delivered').length / recentTransactions.length * 100).toFixed(1) : 100;
+      (recentTransactions.filter(t => t.status === 'success' || t.status === 'delivered' || t.status === 'processing').length / recentTransactions.length * 100).toFixed(1) : 100;
 
     const systemStatus = {
       hubnet: hubnetStatus,

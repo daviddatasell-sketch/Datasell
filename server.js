@@ -1812,9 +1812,9 @@ app.get('/api/profile/stats', requireAuth, async (req, res) => {
     // Count ALL orders (including processing, delivered, success, etc.)
     const totalOrders = userTransactions.length;
     
-    // Count ONLY successful orders (delivered or success status)
+    // Count successful orders (delivered, success, AND processing - they're treated as successful)
     const successfulOrders = userTransactions.filter(transaction => 
-      transaction.status === 'delivered' || transaction.status === 'success'
+      transaction.status === 'delivered' || transaction.status === 'success' || transaction.status === 'processing'
     ).length;
     
     // Total spent from ALL transactions
@@ -2045,7 +2045,7 @@ app.get('/api/admin/dashboard/stats', requireAdmin, async (req, res) => {
       totalRevenue,
       netRevenue: parseFloat(netRevenue.toFixed(2)),
       totalPaystackFees: parseFloat(totalPaystackFees.toFixed(2)),
-      successfulTransactions: transactionsArray.filter(t => t.status === 'success').length,
+      successfulTransactions: transactionsArray.filter(t => t.status === 'success' || t.status === 'delivered').length,
       todayTransactions: todayTransactions.length,
       todayRevenue,
       todayNetRevenue: parseFloat(todayNetRevenue.toFixed(2)),
@@ -2060,7 +2060,7 @@ app.get('/api/admin/dashboard/stats', requireAdmin, async (req, res) => {
       topPackages,
       networkStats,
       successRate: transactionsArray.length > 0 ? 
-        (transactionsArray.filter(t => t.status === 'success' || t.status === 'delivered').length / transactionsArray.length * 100).toFixed(1) : 0
+        (transactionsArray.filter(t => t.status === 'success' || t.status === 'delivered' || t.status === 'processing').length / transactionsArray.length * 100).toFixed(1) : 0
     };
 
     res.json({ success: true, stats });
@@ -5349,7 +5349,7 @@ app.get('/api/admin/system/status', requireAdmin, async (req, res) => {
     ).length;
     
     const successfulTransactions = Object.values(transactions).filter(t => 
-      (t.status === 'delivered' || t.status === 'success') && new Date(t.timestamp || 0).getTime() > oneDayAgo
+      (t.status === 'delivered' || t.status === 'success' || t.status === 'processing') && new Date(t.timestamp || 0).getTime() > oneDayAgo
     ).length;
     const successRate = recentTransactions > 0 ? Math.round((successfulTransactions / recentTransactions) * 100) : 0;
 
