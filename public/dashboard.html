@@ -167,7 +167,7 @@ body {
 }
 
 .app-main {
-    padding: 1rem 0;
+    padding: 1rem 0 80px 0;
 }
 
 .section-title {
@@ -473,12 +473,13 @@ body {
 }
 
 .notice-card {
-    background: linear-gradient(135deg, rgba(65, 105, 225, 0.2) 0%, rgba(255, 255, 255, 0.1) 100%);
-    backdrop-filter: blur(10px);
-    border: 1px solid rgba(65, 105, 225, 0.3);
+    background: linear-gradient(135deg, #ffcb00 0%, #e0c200 100%);
+    backdrop-filter: blur(15px);
+    border: 2px solid rgba(255, 203, 0, 0.4);
     border-radius: 8px;
     padding: 1rem;
     text-align: center;
+    box-shadow: 0 8px 32px rgba(255, 203, 0, 0.2);
 }
 
 .notice-header {
@@ -761,30 +762,69 @@ body {
     .empty-text {
         font-size: 0.85rem;
     }
+
+    .notice-card {
+        padding: 1rem 0.75rem;
+        margin: 1rem 0;
+    }
+
+    .notice-header {
+        gap: 0.5rem;
+        margin-bottom: 0.75rem;
+    }
+
+    .notice-header i {
+        font-size: 1.2rem;
+    }
+
+    .notice-header h3 {
+        font-size: 0.95rem;
+        letter-spacing: 0.3px;
+    }
+
+    .notice-text {
+        font-size: 0.85rem;
+        margin: 0.5rem 0;
+    }
+
+    .wallet-btn {
+        padding: 0.5rem;
+        font-size: 0.75rem;
+        min-height: 32px;
+        font-weight: 600;
+    }
+
+    #notifBadge {
+        width: 20px;
+        height: 20px;
+        font-size: 10px;
+        top: -6px;
+        right: -6px;
+    }
     
     .whatsapp-float {
         bottom: 70px;
         right: 15px;
         padding: 10px 16px;
     }
-    
+
     .whatsapp-text {
         font-size: 0.8rem;
     }
-    
+
     .whatsapp-icon {
         width: 25px;
         height: 25px;
     }
-    
+
     .nav-item {
         padding: 0.3rem;
     }
-    
+
     .nav-item i {
         font-size: 1rem;
     }
-    
+
     .nav-item span {
         font-size: 0.65rem;
     }
@@ -899,28 +939,238 @@ body {
 .greeting-card { display: none !important; }
 .greeting-card.hide { display: none !important; }
 
-/* Print Styles */
-@media print {
-    .bottom-nav,
-    .whatsapp-float {
-        display: none !important;
-    }
-    
-    /* greeting card removed */
-    .greeting-card { display: none !important; }
-    
-    .wallet-balance {
-        background: #f8f9fa !important;
-        color: #333 !important;
-        box-shadow: none !important;
-    }
-    
-    .wallet-btn {
-        background: #e9ecef !important;
-        color: #333 !important;
-        border: 1px solid #ddd !important;
-    }
+/* Dark Mode Styles */
+body.dark-mode {
+    background-color: #09082b;
+    color: #e0e0e0;
 }
+
+body.dark-mode .app-header {
+    background: #0d0b2f;
+    border-bottom-color: #1a1841;
+}
+
+body.dark-mode .app-title {
+    color: #e0e0e0;
+}
+
+body.dark-mode #userNameDisplay {
+    color: #a0a0a0;
+}
+
+body.dark-mode .card,
+body.dark-mode .modal-content {
+    background-color: #1a1841;
+    border-color: #2a2855;
+    color: #e0e0e0;
+}
+
+body.dark-mode .card-header {
+    background-color: #131029;
+    border-bottom-color: #2a2855;
+}
+
+body.dark-mode .form-control,
+body.dark-mode .form-select,
+body.dark-mode textarea {
+    background-color: #0d0b2f;
+    border-color: #2a2855;
+    color: #e0e0e0;
+}
+
+body.dark-mode .form-control::placeholder {
+    color: #787898;
+}
+
+body.dark-mode .form-control:focus,
+body.dark-mode .form-select:focus {
+    background-color: #0d0b2f;
+    border-color: #6c63ff;
+    color: #e0e0e0;
+}
+
+body.dark-mode .wallet-balance {
+    background: white;
+    color: #333;
+}
+
+body.dark-mode .wallet-balance-amount {
+    color: #6c63ff;
+}
+
+body.dark-mode .wallet-btn {
+    background-color: #2a2855;
+    color: white;
+    border-color: #3a3a66;
+}
+
+body.dark-mode .wallet-btn:hover {
+    background-color: #3a3a66;
+    color: #fff;
+}
+
+body.dark-mode .btn-primary {
+    background-color: #6c63ff;
+    border-color: #6c63ff;
+}
+
+body.dark-mode .btn-primary:hover {
+    background-color: #5a52d5;
+    border-color: #5a52d5;
+}
+
+body.dark-mode .nav-tabs {
+    border-bottom-color: #2a2855;
+}
+
+body.dark-mode .nav-tabs .nav-link {
+    color: #a0a0a0;
+}
+
+body.dark-mode .nav-tabs .nav-link.active {
+    background-color: #1a1841;
+    border-color: #2a2855 #2a2855 #1a1841;
+    color: #e0e0e0;
+}
+
+body.dark-mode .table {
+    color: #e0e0e0;
+    border-color: #2a2855;
+}
+
+body.dark-mode .table thead th {
+    background-color: #131029;
+    color: #e0e0e0;
+    border-color: #2a2855;
+}
+
+body.dark-mode .table tbody tr:hover {
+    background-color: #1a1841;
+}
+
+body.dark-mode .list-group-item {
+    background-color: #1a1841;
+    border-color: #2a2855;
+    color: #e0e0e0;
+}
+
+body.dark-mode .btn-close {
+    filter: invert(1);
+}
+
+body.dark-mode .notice-card {
+    background: linear-gradient(135deg, #ffcb00 0%, #3a3a5a 100%);
+    border-color: rgba(255, 203, 0, 0.3);
+    box-shadow: 0 8px 32px rgba(255, 203, 0, 0.15);
+}
+
+body.dark-mode .notice-header h3 {
+    color: white;
+}
+
+body.dark-mode .notice-text {
+    color: white;
+}
+
+body.dark-mode .modal-header {
+    background-color: #0d0b2f;
+    border-bottom-color: #2a2855;
+}
+
+body.dark-mode .modal-body {
+    background-color: #1a1841;
+}
+
+body.dark-mode .modal-footer {
+    background-color: #0d0b2f;
+    border-top-color: #2a2855;
+}
+
+body.dark-mode .greeting-card {
+    background: linear-gradient(135deg, #131029 0%, #1a1841 100%) !important;
+    color: #e0e0e0 !important;
+}
+
+body.dark-mode .bottom-nav {
+    background-color: #0d0b2f;
+    border-top-color: #2a2855;
+}
+
+body.dark-mode .bottom-nav a {
+    color: white;
+}
+
+body.dark-mode .bottom-nav a i {
+    color: white;
+}
+
+body.dark-mode .bottom-nav a.active {
+    color: #6c63ff;
+}
+
+body.dark-mode .bottom-nav a.active i {
+    color: #6c63ff;
+}
+
+body.dark-mode .navbar {
+    background-color: #0d0b2f;
+    border-color: #2a2855;
+}
+
+body.dark-mode .navbar-text,
+body.dark-mode .navbar-light .navbar-brand {
+    color: #e0e0e0;
+}
+
+body.dark-mode .dropdown-menu {
+    background-color: #1a1841;
+    border-color: #2a2855;
+}
+
+body.dark-mode .dropdown-item {
+    color: #e0e0e0;
+}
+
+body.dark-mode .dropdown-item:hover,
+body.dark-mode .dropdown-item:focus {
+    background-color: #2a2855;
+    color: #fff;
+}
+
+body.dark-mode .text-muted {
+    color: #a0a0a0 !important;
+}
+
+body.dark-mode .badge {
+    background-color: #6c63ff;
+}
+
+body.dark-mode hr {
+    border-color: #2a2855;
+}
+
+body.dark-mode .alert {
+    background-color: #1a1841;
+    border-color: #2a2855;
+}
+
+body.dark-mode .progress {
+    background-color: #0d0b2f;
+}
+
+body.dark-mode input[type="search"],
+body.dark-mode input[type="text"],
+body.dark-mode input[type="email"],
+body.dark-mode input[type="password"] {
+    background-color: #0d0b2f;
+    color: #e0e0e0;
+    border-color: #2a2855;
+}
+
+body.dark-mode [data-network="mtn"] .network-name {
+    color: white;
+}
+
     </style>
 </head>
 <body class="mobile-layout">
@@ -959,9 +1209,12 @@ body {
                     <span id="userNameDisplay" style="font-size: 0.85rem; font-weight: 500; color: #666; margin-top: 2px;">User</span>
                 </div>
                 <div style="display:flex;align-items:center;gap:10px;">
+                    <button id="darkModeToggle" class="btn btn-link" title="Toggle Dark Mode" style="color:#333;font-size:18px;border:0;background:transparent;padding:0;position:relative;cursor:pointer;">
+                        <i class="fas fa-moon"></i>
+                    </button>
                     <button id="notifBtn" class="btn btn-link" title="Notifications" style="color:#333;font-size:18px;border:0;background:transparent;padding:0;position:relative;">
                         <i class="fas fa-bell"></i>
-                        <span id="notifBadge" style="display:none;background:#ff3b30;color:#fff;border-radius:50%;width:22px;height:22px;position:absolute;top:-8px;right:-8px;font-size:11px;font-weight:600;display:flex;align-items:center;justify-content:center;">0</span>
+                        <span id="notifBadge" style="background:#ff3b30;color:#fff;border-radius:50%;width:22px;height:22px;position:absolute;top:-8px;right:-8px;font-size:11px;font-weight:600;display:none;align-items:center;justify-content:center;">0</span>
                     </button>
                     <div class="user-avatar" id="userAvatar" style="width: 32px; height: 32px; font-size: 0.85rem;">
                         <i class="fas fa-user"></i>
@@ -1090,7 +1343,7 @@ body {
 
     <!-- Bottom Navigation -->
     <nav class="bottom-nav">
-        <a href="/" class="nav-item active">
+        <a href="/dashboard" class="nav-item active">
             <i class="fas fa-home"></i>
             <span>Home</span>
         </a>
@@ -1367,42 +1620,47 @@ body {
                 const response = await apiFetch('/api/notifications');
                 const result = await response.json();
                 
-                if (result.success && result.notifications && result.notifications.length > 0) {
-                    // Get the latest notification
-                    const latestNotification = result.notifications[0];
+                if (result.success && result.notifications) {
+                    // Update badge with total notification count
+                    updateBadge(result.notifications.length);
                     
-                    // Display notification in modal
-                    const notificationTitle = document.getElementById('notificationTitle');
-                    const notificationBody = document.getElementById('notificationBody');
-                    const notificationModalOverlay = document.getElementById('notificationModalOverlay');
-                    const closeNotificationBtn = document.getElementById('closeNotificationBtn');
-                    
-                    // Set the notification title
-                    notificationTitle.innerHTML = latestNotification.title || '';
-                    
-                    // Set the notification message
-                    notificationBody.innerHTML = `
-                        <p>${latestNotification.body || 'You have a new notification'}</p>
-                        ${latestNotification.imageUrl ? `<img src="${latestNotification.imageUrl}" style="width:100%;border-radius:8px;margin-top:12px;max-height:200px;object-fit:cover;">` : ''}
-                    `;
-                    
-                    // Show the modal
-                    notificationModalOverlay.style.display = 'flex';
-                    
-                    // Mark as shown
-                    markLoginNotificationShown();
-                    
-                    // Close button handler
-                    closeNotificationBtn.onclick = () => {
-                        notificationModalOverlay.style.display = 'none';
-                    };
-                    
-                    // Also close when clicking outside the modal
-                    notificationModalOverlay.onclick = (e) => {
-                        if (e.target === notificationModalOverlay) {
+                    if (result.notifications.length > 0) {
+                        // Get the latest notification
+                        const latestNotification = result.notifications[0];
+                        
+                        // Display notification in modal
+                        const notificationTitle = document.getElementById('notificationTitle');
+                        const notificationBody = document.getElementById('notificationBody');
+                        const notificationModalOverlay = document.getElementById('notificationModalOverlay');
+                        const closeNotificationBtn = document.getElementById('closeNotificationBtn');
+                        
+                        // Set the notification title
+                        notificationTitle.innerHTML = latestNotification.title || '';
+                        
+                        // Set the notification message
+                        notificationBody.innerHTML = `
+                            <p>${latestNotification.body || 'You have a new notification'}</p>
+                            ${latestNotification.imageUrl ? `<img src="${latestNotification.imageUrl}" style="width:100%;border-radius:8px;margin-top:12px;max-height:200px;object-fit:cover;">` : ''}
+                        `;
+                        
+                        // Show the modal
+                        notificationModalOverlay.style.display = 'flex';
+                        
+                        // Mark as shown
+                        markLoginNotificationShown();
+                        
+                        // Close button handler
+                        closeNotificationBtn.onclick = () => {
                             notificationModalOverlay.style.display = 'none';
-                        }
-                    };
+                        };
+                        
+                        // Also close when clicking outside the modal
+                        notificationModalOverlay.onclick = (e) => {
+                            if (e.target === notificationModalOverlay) {
+                                notificationModalOverlay.style.display = 'none';
+                            }
+                        };
+                    }
                 }
             } catch (error) {
                 console.error('Failed to load notification for display:', error);
@@ -1907,8 +2165,8 @@ body {
                             });
                         }
 
-                        // update badge (do not auto-clear lastTs here; lastTs is only updated when user views notifications)
-                        updateBadge(newCount);
+                        // update badge with total notification count (not just unread)
+                        updateBadge(list.length);
                     } catch (e) { console.error('Polling error', e); }
                 };
 
@@ -1994,6 +2252,61 @@ body {
                     console.error('Firebase messaging setup failed', err);
                 }
             })();
+        </script>
+        <!-- Dark Mode Toggle -->
+        <script>
+            // Initialize dark mode from local storage - DEFAULT is TRUE (dark mode on)
+            function initDarkMode() {
+                const isDarkMode = localStorage.getItem('datasell-dark-mode') !== 'false';
+                if (isDarkMode) {
+                    document.body.classList.add('dark-mode');
+                    updateDarkModeIcon(true);
+                }
+                localStorage.setItem('datasell-dark-mode', isDarkMode);
+            }
+
+            // Update the dark mode icon
+            function updateDarkModeIcon(isDark) {
+                const toggle = document.getElementById('darkModeToggle');
+                if (toggle) {
+                    const icon = toggle.querySelector('i');
+                    if (isDark) {
+                        icon.classList.remove('fa-moon');
+                        icon.classList.add('fa-sun');
+                        toggle.style.color = '#ffd700';
+                    } else {
+                        icon.classList.remove('fa-sun');
+                        icon.classList.add('fa-moon');
+                        toggle.style.color = '#333';
+                    }
+                }
+            }
+
+            // Toggle dark mode
+            function toggleDarkMode() {
+                const isDarkMode = document.body.classList.toggle('dark-mode');
+                localStorage.setItem('datasell-dark-mode', isDarkMode);
+                updateDarkModeIcon(isDarkMode);
+                
+                // Update header border color
+                const header = document.querySelector('.app-header');
+                if (header) {
+                    if (isDarkMode) {
+                        header.style.borderBottomColor = '#1a1841';
+                    } else {
+                        header.style.borderBottomColor = '#e9ecef';
+                    }
+                }
+            }
+
+            // Add event listener to dark mode toggle
+            document.addEventListener('DOMContentLoaded', function() {
+                initDarkMode();
+                const darkModeToggle = document.getElementById('darkModeToggle');
+                if (darkModeToggle) {
+                    darkModeToggle.addEventListener('click', toggleDarkMode);
+                }
+            });
         </script>
         </script>
         <!-- Session Timeout Manager -->

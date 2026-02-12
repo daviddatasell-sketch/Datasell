@@ -78,7 +78,7 @@ body {
 }
 
 .app-main {
-    padding: 1rem 0;
+    padding: 1rem 0 80px 0;
     width: 100%;
 }
 
@@ -464,6 +464,14 @@ body {
         padding: 0 0.75rem;
     }
     
+    #notifBadge {
+        width: 20px;
+        height: 20px;
+        font-size: 10px;
+        top: -6px;
+        right: -6px;
+    }
+    
     .app-title { 
         font-size: 1.25rem;
         text-align: center;
@@ -637,6 +645,92 @@ body {
 @media (min-width: 1400px) {
     .container { max-width: 1320px; }
 }
+
+/* Dark Mode Styles */
+body.dark-mode {
+    background-color: #09082b;
+    color: #e0e0e0;
+}
+
+body.dark-mode .app-header {
+    background: #0d0b2f;
+    border-bottom-color: #1a1841;
+}
+
+body.dark-mode .app-title {
+    color: #e0e0e0;
+}
+
+body.dark-mode .card,
+body.dark-mode .modal-content {
+    background-color: #1a1841;
+    border-color: #2a2855;
+    color: #e0e0e0;
+}
+
+body.dark-mode .form-control,
+body.dark-mode .form-select,
+body.dark-mode textarea {
+    background-color: #0d0b2f;
+    border-color: #2a2855;
+    color: #e0e0e0;
+}
+
+body.dark-mode .form-control::placeholder {
+    color: #787898;
+}
+
+body.dark-mode .form-control:focus,
+body.dark-mode .form-select:focus {
+    background-color: #0d0b2f;
+    border-color: #6c63ff;
+    color: #e0e0e0;
+}
+
+body.dark-mode .table {
+    color: #e0e0e0;
+    border-color: #2a2855;
+}
+
+body.dark-mode .table thead th {
+    background-color: #131029;
+    color: #e0e0e0;
+    border-color: #2a2855;
+}
+
+body.dark-mode .table tbody tr:hover {
+    background-color: #1a1841;
+}
+
+body.dark-mode .btn-primary {
+    background-color: #6c63ff;
+    border-color: #6c63ff;
+}
+
+body.dark-mode .text-muted {
+    color: #a0a0a0 !important;
+}
+
+body.dark-mode .badge {
+    background-color: #6c63ff;
+}
+
+body.dark-mode hr {
+    border-color: #2a2855;
+}
+
+body.dark-mode .bottom-nav {
+    background-color: #0d0b2f;
+    border-top-color: #2a2855;
+}
+
+body.dark-mode .bottom-nav a {
+    color: white;
+}
+
+body.dark-mode .bottom-nav a.active {
+    color: #6c63ff;
+}
 </style>
 </head>
 <body>
@@ -644,12 +738,17 @@ body {
     <header class="app-header">
         <div class="container">
             <div class="d-flex justify-content-between align-items-center py-3">
-                <a href="/" class="btn btn-sm btn-outline-secondary">
+                <a href="/dashboard" class="btn btn-sm btn-outline-secondary">
                     <i class="fas fa-arrow-left"></i>
                 </a>
                 <h1 class="app-title">Orders</h1>
-                <div class="user-avatar" id="userAvatar">
-                    <i class="fas fa-user"></i>
+                <div style="display:flex;align-items:center;gap:10px;">
+                    <button id="darkModeToggle" class="btn btn-link" title="Toggle Dark Mode" style="color:#333;font-size:18px;border:0;background:transparent;padding:0;position:relative;cursor:pointer;">
+                        <i class="fas fa-moon"></i>
+                    </button>
+                    <div class="user-avatar" id="userAvatar">
+                        <i class="fas fa-user"></i>
+                    </div>
                 </div>
             </div>
         </div>
@@ -931,6 +1030,61 @@ body {
         }
 
         document.addEventListener('DOMContentLoaded', initializeApp);
+    </script>
+    <!-- Dark Mode Toggle -->
+    <script>
+        // Initialize dark mode from local storage - DEFAULT is TRUE (dark mode on)
+        function initDarkMode() {
+            const isDarkMode = localStorage.getItem('datasell-dark-mode') !== 'false';
+            if (isDarkMode) {
+                document.body.classList.add('dark-mode');
+                updateDarkModeIcon(true);
+            }
+            localStorage.setItem('datasell-dark-mode', isDarkMode);
+        }
+
+        // Update the dark mode icon
+        function updateDarkModeIcon(isDark) {
+            const toggle = document.getElementById('darkModeToggle');
+            if (toggle) {
+                const icon = toggle.querySelector('i');
+                if (isDark) {
+                    icon.classList.remove('fa-moon');
+                    icon.classList.add('fa-sun');
+                    toggle.style.color = '#ffd700';
+                } else {
+                    icon.classList.remove('fa-sun');
+                    icon.classList.add('fa-moon');
+                    toggle.style.color = '#333';
+                }
+            }
+        }
+
+        // Toggle dark mode
+        function toggleDarkMode() {
+            const isDarkMode = document.body.classList.toggle('dark-mode');
+            localStorage.setItem('datasell-dark-mode', isDarkMode);
+            updateDarkModeIcon(isDarkMode);
+            
+            // Update header border color
+            const header = document.querySelector('.app-header');
+            if (header) {
+                if (isDarkMode) {
+                    header.style.borderBottomColor = '#1a1841';
+                } else {
+                    header.style.borderBottomColor = '#e9ecef';
+                }
+            }
+        }
+
+        // Initialize dark mode on page load
+        document.addEventListener('DOMContentLoaded', function() {
+            initDarkMode();
+            const darkModeToggle = document.getElementById('darkModeToggle');
+            if (darkModeToggle) {
+                darkModeToggle.addEventListener('click', toggleDarkMode);
+            }
+        });
     </script>
     <!-- Session Timeout Manager -->
     <script src="/js/session-timeout.js"></script>

@@ -10,7 +10,7 @@
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/notyf@3/notyf.min.css">
     <style>
         body {
-    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    background: #09082b;
     min-height: 100vh;
     display: flex;
     align-items: center;
@@ -301,7 +301,7 @@ h3 {
                             <a href="/wallet" class="btn btn-primary">
                                 <i class="fas fa-wallet"></i> Go to Wallet
                             </a>
-                            <a href="/" class="btn btn-secondary">
+                            <a href="/dashboard" class="btn btn-secondary">
                                 <i class="fas fa-home"></i> Go Home
                             </a>
                         </div>
@@ -333,9 +333,9 @@ h3 {
                         </div>
                     `;
                     
-                    // Redirect to home after 2 seconds
+                    // Redirect to dashboard after 2 seconds
                     setTimeout(() => {
-                        window.location.href = '/';
+                        window.location.href = '/dashboard';
                     }, 2000);
                 } else {
                     throw new Error(result.error || 'Payment verification failed');
@@ -353,7 +353,7 @@ h3 {
                             <a href="/purchase" class="btn btn-primary">
                                 <i class="fas fa-redo"></i> Try Again
                             </a>
-                            <a href="/" class="btn btn-secondary">
+                            <a href="/dashboard" class="btn btn-secondary">
                                 <i class="fas fa-home"></i> Go Home
                             </a>
                         </div>

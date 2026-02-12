@@ -86,8 +86,7 @@ html {
 
 body.auth-page {
     font-family: 'Poppins', 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-    background: url('/images/DATASELL-BACK.jpg') no-repeat center center fixed;
-    background-size: cover;
+    background: #09082b;
     background-attachment: fixed;
     min-height: 100vh;
     display: flex;
@@ -96,6 +95,54 @@ body.auth-page {
     padding: 1rem;
     overflow-x: hidden;
     margin: 0;
+    position: relative;
+}
+
+body.auth-page::before {
+    content: '';
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background-image: 
+        /* Shiny small stars */
+        radial-gradient(2.5px 2.5px at 10% 20%, white, rgba(255,255,255,0)),
+        radial-gradient(2px 2px at 20% 80%, white, rgba(255,255,255,0)),
+        radial-gradient(2.5px 2.5px at 50% 50%, white, rgba(255,255,255,0)),
+        radial-gradient(2px 2px at 80% 10%, white, rgba(255,255,255,0)),
+        radial-gradient(2.5px 2.5px at 90% 60%, white, rgba(255,255,255,0)),
+        radial-gradient(2px 2px at 30% 40%, white, rgba(255,255,255,0)),
+        radial-gradient(2.5px 2.5px at 70% 70%, white, rgba(255,255,255,0)),
+        radial-gradient(2px 2px at 15% 70%, white, rgba(255,255,255,0)),
+        radial-gradient(2.5px 2.5px at 60% 20%, white, rgba(255,255,255,0)),
+        radial-gradient(2px 2px at 40% 90%, white, rgba(255,255,255,0)),
+        radial-gradient(2.5px 2.5px at 5% 50%, white, rgba(255,255,255,0)),
+        radial-gradient(2px 2px at 35% 5%, white, rgba(255,255,255,0)),
+        radial-gradient(2.5px 2.5px at 95% 85%, white, rgba(255,255,255,0)),
+        radial-gradient(2px 2px at 55% 35%, white, rgba(255,255,255,0)),
+        radial-gradient(2.5px 2.5px at 75% 95%, white, rgba(255,255,255,0)),
+        /* Blurry soft stars */
+        radial-gradient(4.5px 4.5px at 25% 50%, rgba(255,255,255,0.4), rgba(255,255,255,0)),
+        radial-gradient(4.5px 4.5px at 75% 30%, rgba(255,255,255,0.35), rgba(255,255,255,0)),
+        radial-gradient(4.5px 4.5px at 45% 70%, rgba(255,255,255,0.3), rgba(255,255,255,0)),
+        radial-gradient(4px 4px at 85% 75%, rgba(255,255,255,0.25), rgba(255,255,255,0)),
+        radial-gradient(4px 4px at 20% 30%, rgba(255,255,255,0.3), rgba(255,255,255,0)),
+        radial-gradient(4.5px 4.5px at 65% 85%, rgba(255,255,255,0.32), rgba(255,255,255,0)),
+        radial-gradient(4px 4px at 12% 10%, rgba(255,255,255,0.28), rgba(255,255,255,0)),
+        radial-gradient(4.5px 4.5px at 40% 15%, rgba(255,255,255,0.35), rgba(255,255,255,0)),
+        radial-gradient(4px 4px at 88% 45%, rgba(255,255,255,0.26), rgba(255,255,255,0)),
+        radial-gradient(4.5px 4.5px at 32% 75%, rgba(255,255,255,0.3), rgba(255,255,255,0));
+    background-size: 100% 100%;
+    background-attachment: fixed;
+    pointer-events: none;
+    z-index: 0;
+    animation: twinkle 4s ease-in-out infinite;
+}
+
+@keyframes twinkle {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 1; }
 }
 
 .auth-container {
@@ -105,6 +152,8 @@ body.auth-page {
     display: flex;
     align-items: center;
     justify-content: center;
+    position: relative;
+    z-index: 1;
 }
 
 .auth-card {
@@ -123,8 +172,7 @@ body.auth-page {
 /* Mobile Responsive Styles */
 @media (max-width: 768px) {
     body.auth-page {
-        background: url('/images/DATASELL-BACK.jpg') no-repeat center center fixed;
-        background-size: cover;
+        background: #09082b;
         background-attachment: fixed;
         padding: 0.5rem;
     }
@@ -145,8 +193,7 @@ body.auth-page {
 @media (max-width: 480px) {
     body.auth-page {
         padding: 0;
-        background: url('/images/DATASELL-BACK.jpg') no-repeat center center fixed;
-        background-size: cover;
+        background: #09082b;
         background-attachment: fixed;
     }
     
@@ -199,11 +246,11 @@ body.auth-page {
 .auth-title-datasell {
     font-size: 2rem;
     font-weight: 800;
-    background: linear-gradient(90deg, #6c63ff 30%, #3b82f6 70%);
-    -webkit-background-clip: text;
-    -webkit-text-fill-color: transparent;
-    background-clip: text;
-    text-fill-color: transparent;
+    color: #09082b;
+    -webkit-background-clip: unset;
+    -webkit-text-fill-color: unset;
+    background-clip: unset;
+    text-fill-color: unset;
     letter-spacing: 1.5px;
     margin-bottom: 0.3rem;
     margin-top: 0;
@@ -212,11 +259,11 @@ body.auth-page {
 .auth-subtitle-datasell {
     font-size: 1rem;
     font-weight: 500;
-    background: linear-gradient(90deg, #6c63ff 30%, #3b82f6 70%);
-    -webkit-background-clip: text;
-    -webkit-text-fill-color: transparent;
-    background-clip: text;
-    text-fill-color: transparent;
+    color: #09082b;
+    -webkit-background-clip: unset;
+    -webkit-text-fill-color: unset;
+    background-clip: unset;
+    text-fill-color: unset;
     letter-spacing: 0.3px;
 }
 
@@ -267,24 +314,6 @@ body.auth-page {
     .auth-subtitle-datasell {
         font-size: 0.8rem;
     }
-}
-    -webkit-text-fill-color: transparent;
-    background-clip: text;
-    text-fill-color: transparent;
-    letter-spacing: 1.5px;
-    margin-bottom: 0.3rem;
-    margin-top: 0;
-}
-
-.auth-subtitle-datasell {
-    font-size: 1rem;
-    font-weight: 500;
-    background: linear-gradient(90deg, #6c63ff 30%, #3b82f6 70%);
-    -webkit-background-clip: text;
-    -webkit-text-fill-color: transparent;
-    background-clip: text;
-    text-fill-color: transparent;
-    letter-spacing: 0.3px;
 }
 
 .auth-form .form-label {
