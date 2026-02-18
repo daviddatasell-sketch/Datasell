@@ -2104,7 +2104,7 @@ app.get('/api/admin/recent-activity', requireAdmin, async (req, res) => {
                !isNaN(new Date(transaction.timestamp).getTime());
       })
       .sort(([,a], [,b]) => new Date(b.timestamp) - new Date(a.timestamp))
-      .slice(0, 5)
+      .slice(0, 10)
       .map(([id, transaction]) => {
         // Extra validation to ensure data is clean
         const network = transaction.network || 'Unknown';
@@ -2125,7 +2125,7 @@ app.get('/api/admin/recent-activity', requireAdmin, async (req, res) => {
     // Get recent webhook events
     const recentWebhooks = Object.entries(webhookLogs)
       .sort(([,a], [,b]) => new Date(b.timestamp) - new Date(a.timestamp))
-      .slice(0, 3)
+      .slice(0, 5)
       .map(([id, log]) => ({
         id,
         type: 'payment',
@@ -2140,7 +2140,7 @@ app.get('/api/admin/recent-activity', requireAdmin, async (req, res) => {
     // Combine and sort
     const recentActivity = [...recentTransactions, ...recentWebhooks]
       .sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp))
-      .slice(0, 8);
+      .slice(0, 10);
 
     res.json({ success: true, activity: recentActivity });
   } catch (error) {

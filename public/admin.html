@@ -1726,7 +1726,7 @@ function displayRecentActivity(activities) {
     return;
   }
   
-  const html = validActivities.slice(0, 5).map(item => {
+  const html = validActivities.slice(0, 10).map(item => {
     const icon = item.type === 'payment' ? '💳' : '📊';
     
     // For transactions (orders), always show "Success" in green
