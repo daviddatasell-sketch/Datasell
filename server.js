@@ -2074,7 +2074,7 @@ app.get('/api/admin/dashboard/stats', requireAdmin, async (req, res) => {
 app.get('/api/admin/recent-activity', requireAdmin, async (req, res) => {
   try {
     const [transactionsSnapshot, webhookLogsSnapshot, usersSnapshot] = await Promise.all([
-      admin.database().ref('transactions').limitToLast(10).once('value'),
+      admin.database().ref('transactions').limitToLast(100).once('value'),
       admin.database().ref('webhook_logs').limitToLast(5).once('value'),
       admin.database().ref('users').once('value')
     ]);
@@ -2089,21 +2089,38 @@ app.get('/api/admin/recent-activity', requireAdmin, async (req, res) => {
       return user ? (user.firstName && user.lastName ? `${user.firstName} ${user.lastName}` : user.email || 'Unknown') : 'Unknown User';
     };
 
-    // Get recent transactions
+    // Get recent transactions (filtered for valid data)
     const recentTransactions = Object.entries(transactions)
+      .filter(([id, transaction]) => {
+        // Only include transactions with valid data
+        return transaction.timestamp && 
+               transaction.userId && 
+               transaction.phoneNumber && 
+               transaction.packageName && 
+               transaction.network && 
+               typeof transaction.amount === 'number' && 
+               transaction.amount > 0 &&
+               transaction.status &&
+               !isNaN(new Date(transaction.timestamp).getTime());
+      })
       .sort(([,a], [,b]) => new Date(b.timestamp) - new Date(a.timestamp))
       .slice(0, 5)
-      .map(([id, transaction]) => ({
-        id,
-        type: 'transaction',
-        description: `${transaction.packageName || 'Data Package'} - ${transaction.network}`,
-        amount: transaction.amount,
-        status: transaction.status,
-        timestamp: transaction.timestamp,
-        userId: transaction.userId,
-        userName: getUserName(transaction.userId),
-        reference: transaction.reference
-      }));
+      .map(([id, transaction]) => {
+        // Extra validation to ensure data is clean
+        const network = transaction.network || 'Unknown';
+        const packageName = transaction.packageName || 'Data Package';
+        return {
+          id,
+          type: 'transaction',
+          description: `${packageName} - ${network}`,
+          amount: transaction.amount || 0,
+          status: transaction.status || 'unknown',
+          timestamp: transaction.timestamp,
+          userId: transaction.userId,
+          userName: getUserName(transaction.userId),
+          reference: transaction.reference
+        };
+      });
 
     // Get recent webhook events
     const recentWebhooks = Object.entries(webhookLogs)
@@ -4808,10 +4825,23 @@ app.get('/api/admin/transactions', requireAdmin, async (req, res) => {
     const transactionsSnapshot = await admin.database().ref('transactions').once('value');
     const usersSnapshot = await admin.database().ref('users').once('value');
     
-    let transactions = Object.entries(transactionsSnapshot.val() || {}).map(([id, transaction]) => ({
-      id,
-      ...transaction
-    }));
+    let transactions = Object.entries(transactionsSnapshot.val() || {})
+      .map(([id, transaction]) => ({
+        id,
+        ...transaction
+      }))
+      .filter(t => {
+        // Only include transactions with valid data
+        return t.timestamp && 
+               !isNaN(new Date(t.timestamp).getTime()) &&
+               t.userId && 
+               t.phoneNumber && 
+               t.packageName && 
+               t.network && 
+               typeof t.amount === 'number' && 
+               t.amount > 0 &&
+               t.status;
+      });
 
     const users = usersSnapshot.val() || {};
 

@@ -1109,8 +1109,26 @@ async function initializeApp() {
             `;
             return;
         }
+        
+        // Filter out corrupted records
+        const validTransactions = transactions.filter(t => 
+            t && 
+            t.timestamp && 
+            !isNaN(new Date(t.timestamp).getTime()) &&
+            typeof t.amount === 'number'
+        );
+        
+        if (validTransactions.length === 0) {
+            transactionsList.innerHTML = `
+                <div class="text-center py-3">
+                    <i class="fas fa-receipt fa-2x text-muted mb-2" style="opacity: 0.6;"></i>
+                    <p class="text-muted" style="margin: 0; font-size: 0.9rem;">No valid transactions found</p>
+                </div>
+            `;
+            return;
+        }
 
-        transactionsList.innerHTML = transactions.map(transaction => `
+        transactionsList.innerHTML = validTransactions.map(transaction => `
             <div class="transaction-item">
                 <div class="transaction-info">
                     <div class="transaction-details">
@@ -1141,8 +1159,21 @@ async function initializeApp() {
             isLoadingMore = false;
             return;
         }
+        
+        // Filter out corrupted records
+        const validTransactions = transactions.filter(t => 
+            t && 
+            t.timestamp && 
+            !isNaN(new Date(t.timestamp).getTime()) &&
+            typeof t.amount === 'number'
+        );
+        
+        if (validTransactions.length === 0) {
+            isLoadingMore = false;
+            return;
+        }
 
-        const html = transactions.map(transaction => `
+        const html = validTransactions.map(transaction => `
             <div class="transaction-item">
                 <div class="transaction-info">
                     <div class="transaction-details">
@@ -1185,7 +1216,8 @@ async function initializeApp() {
         if (transaction.purpose === 'wallet_funding') {
             return 'Wallet Funding';
         } else if (transaction.packageName) {
-            return `${transaction.packageName} - ${transaction.network?.toUpperCase()}`;
+            const network = transaction.network ? transaction.network.toUpperCase() : 'Unknown Network';
+            return `${transaction.packageName} - ${network}`;
         } else {
             return 'Transaction';
         }
@@ -1193,6 +1225,9 @@ async function initializeApp() {
 
     // Format date
     function formatDate(timestamp) {
+        if (!timestamp || isNaN(new Date(timestamp).getTime())) {
+            return 'Invalid Date';
+        }
         const date = new Date(timestamp);
         return date.toLocaleDateString() + ' ' + date.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
     }

@@ -1711,7 +1711,22 @@ function displayRecentActivity(activities) {
     return;
   }
   
-  const html = activities.slice(0, 5).map(item => {
+  // Filter out corrupted records
+  const validActivities = activities.filter(item => {
+    return item && 
+           item.description && 
+           typeof item.amount === 'number' && 
+           item.amount > 0 &&
+           item.timestamp &&
+           !isNaN(new Date(item.timestamp).getTime());
+  });
+  
+  if (validActivities.length === 0) {
+    document.getElementById('recentActivity').innerHTML = '<p>No recent activity</p>';
+    return;
+  }
+  
+  const html = validActivities.slice(0, 5).map(item => {
     const icon = item.type === 'payment' ? '💳' : '📊';
     const statusColor = (item.status === 'success' || item.status === 'delivered' || item.status === 'processing') ? '#10b981' : item.status === 'pending' ? '#f59e0b' : '#ef4444';
     // Display "Success" for any order with processing, delivered, or success status
@@ -2893,17 +2908,35 @@ async function loadTransactions() {
     const response = await fetch('/api/admin/transactions', { credentials: 'include' });
     const data = await response.json();
 
-    if (data.success && data.transactions) {
+    if (data.success && data.transactions && data.transactions.length > 0) {
       const tbody = document.getElementById('transactionsTableBody');
       if (!tbody) {
         console.error('❌ transactionsTableBody element not found');
         return;
       }
       
-      tbody.innerHTML = data.transactions.map(t => {
+      // Filter out corrupted records with validation
+      const validTransactions = data.transactions.filter(t => 
+        t && 
+        t.timestamp && 
+        !isNaN(new Date(t.timestamp).getTime()) &&
+        t.packageName &&
+        t.network &&
+        typeof t.amount === 'number' &&
+        t.amount > 0
+      );
+      
+      if (validTransactions.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="10" class="text-center">No valid transactions found</td></tr>';
+        return;
+      }
+      
+      tbody.innerHTML = validTransactions.map(t => {
         // Display "Success" for processing, delivered, or success; otherwise show actual status
         const displayStatus = (t.status === 'success' || t.status === 'delivered' || t.status === 'processing') ? 'Success' : t.status || 'unknown';
         const statusColor = (t.status === 'success' || t.status === 'delivered' || t.status === 'processing') ? '#10b981' : t.status === 'failed' ? '#ef4444' : '#f59e0b';
+        const dateStr = new Date(t.timestamp).toLocaleDateString();
+        const timeStr = new Date(t.timestamp).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
         return `
         <tr>
           <td><code>${t.orderId || (t.reference || 'N/A').substring(0, 8)}</code></td>
@@ -2913,7 +2946,7 @@ async function loadTransactions() {
           <td>${t.phoneNumber || t.phone || 'N/A'}</td>
           <td>₵${parseFloat(t.amount || 0).toFixed(2)}</td>
           <td><span style="color: ${statusColor}">${displayStatus}</span></td>
-          <td>${new Date(t.timestamp).toLocaleDateString()} ${new Date(t.timestamp).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</td>
+          <td>${dateStr} ${timeStr}</td>
           <td>
             <button class="btn btn-sm" onclick="viewTransactionDetails('${t.id}')">Details</button>
             <button class="btn btn-sm btn-outline-secondary ms-2" onclick="adminToggleOrderStatus('${t.id}')" style="padding: 4px 8px; font-size: 12px;">⟲ Toggle</button>
