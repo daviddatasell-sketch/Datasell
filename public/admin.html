@@ -2888,104 +2888,45 @@ function addPackage() {
 }
 
   // Load Transactions Function
-let transactionsListener = null; // Store listener reference for cleanup
-
 async function loadTransactions() {
   try {
-    console.log('📋 Loading transactions for admin dashboard...');
     const response = await fetch('/api/admin/transactions', { credentials: 'include' });
     const data = await response.json();
-    
-    console.log('✅ Transactions response:', data);
-    
+
     if (data.success && data.transactions) {
-      console.log(`📊 Found ${data.transactions.length} transactions`);
-      renderTransactionsTable(data.transactions);
+      const tbody = document.getElementById('transactionsTableBody');
+      if (!tbody) {
+        console.error('❌ transactionsTableBody element not found');
+        return;
+      }
+      
+      tbody.innerHTML = data.transactions.map(t => {
+        // Display "Success" for processing, delivered, or success; otherwise show actual status
+        const displayStatus = (t.status === 'success' || t.status === 'delivered' || t.status === 'processing') ? 'Success' : t.status || 'unknown';
+        const statusColor = (t.status === 'success' || t.status === 'delivered' || t.status === 'processing') ? '#10b981' : t.status === 'failed' ? '#ef4444' : '#f59e0b';
+        return `
+        <tr>
+          <td><code>${t.orderId || (t.reference || 'N/A').substring(0, 8)}</code></td>
+          <td>${t.userName || 'N/A'}</td>
+          <td>${t.packageName || 'N/A'}</td>
+          <td>${t.network || 'N/A'}</td>
+          <td>${t.phoneNumber || t.phone || 'N/A'}</td>
+          <td>₵${parseFloat(t.amount || 0).toFixed(2)}</td>
+          <td><span style="color: ${statusColor}">${displayStatus}</span></td>
+          <td>${new Date(t.timestamp).toLocaleDateString()} ${new Date(t.timestamp).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</td>
+          <td>
+            <button class="btn btn-sm" onclick="viewTransactionDetails('${t.id}')">Details</button>
+            <button class="btn btn-sm btn-outline-secondary ms-2" onclick="adminToggleOrderStatus('${t.id}')" style="padding: 4px 8px; font-size: 12px;">⟲ Toggle</button>
+          </td>
+        </tr>
+      `}).join('');
     } else {
-      console.warn('⚠️ No transactions or API error:', data);
       document.getElementById('transactionsTableBody').innerHTML = '<tr><td colspan="10" class="text-center">No transactions found</td></tr>';
     }
   } catch (error) {
-    console.error('❌ Error loading transactions:', error);
+    console.error('Error loading transactions:', error);
     document.getElementById('transactionsTableBody').innerHTML = '<tr><td colspan="10" class="text-center" style="color: #ef4444;">Failed to load transactions</td></tr>';
   }
-  
-  // Set up real-time Firebase listener for instant updates when new orders are placed
-  if (transactionsListener) {
-    transactionsListener(); // Remove old listener
-  }
-  
-  try {
-    const db = firebase.database();
-    const transactionsRef = db.ref('transactions');
-    
-    transactionsListener = transactionsRef.on('value', (snapshot) => {
-      const transactionsData = snapshot.val() || {};
-      const transactions = Object.entries(transactionsData).map(([id, transaction]) => ({
-        id,
-        ...transaction
-      }));
-      
-      // Fetch users to get names
-      db.ref('users').once('value', (usersSnapshot) => {
-        const users = usersSnapshot.val() || {};
-        
-        // Add user information to transactions
-        const transactionsWithUsers = transactions.map(transaction => {
-          const user = users[transaction.userId];
-          return {
-            ...transaction,
-            userName: user ? `${user.firstName} ${user.lastName}` : 'Unknown User',
-            userEmail: user?.email || 'N/A'
-          };
-        });
-        
-        // Sort by timestamp (newest first)
-        transactionsWithUsers.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
-        
-        // Render table with real-time data
-        renderTransactionsTable(transactionsWithUsers);
-      });
-    });
-  } catch (firebaseError) {
-    console.log('📡 Firebase real-time listener not available, using API polling', firebaseError.message);
-  }
-}
-
-function renderTransactionsTable(transactions) {
-  const tbody = document.getElementById('transactionsTableBody');
-  if (!tbody) {
-    console.error('❌ transactionsTableBody element not found');
-    return;
-  }
-  
-  if (!transactions || transactions.length === 0) {
-    tbody.innerHTML = '<tr><td colspan="10" class="text-center">No transactions found</td></tr>';
-    return;
-  }
-  
-  tbody.innerHTML = transactions.map(t => {
-    // Display "Success" for processing, delivered, or success; otherwise show actual status
-    const displayStatus = (t.status === 'success' || t.status === 'delivered' || t.status === 'processing') ? 'Success' : t.status || 'unknown';
-    const statusColor = (t.status === 'success' || t.status === 'delivered' || t.status === 'processing') ? '#10b981' : t.status === 'failed' ? '#ef4444' : '#f59e0b';
-    console.log(`📝 Rendering order: orderId=${t.orderId}, reference=${t.reference}, userName=${t.userName}`);
-    return `
-    <tr>
-      <td><code>${t.orderId || (t.reference || 'N/A').substring(0, 8)}</code></td>
-      <td>${t.userName || 'N/A'}</td>
-      <td>${t.packageName || 'N/A'}</td>
-      <td>${t.network || 'N/A'}</td>
-      <td>${t.phoneNumber || t.phone || 'N/A'}</td>
-      <td>₵${parseFloat(t.amount || 0).toFixed(2)}</td>
-      <td><span style="color: ${statusColor}">${displayStatus}</span></td>
-      <td>${new Date(t.timestamp).toLocaleDateString()} ${new Date(t.timestamp).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</td>
-      <td>
-        <button class="btn btn-sm" onclick="viewTransactionDetails('${t.id}')">Details</button>
-        <button class="btn btn-sm btn-outline-secondary ms-2" onclick="adminToggleOrderStatus('${t.id}')" style="padding: 4px 8px; font-size: 12px;">⟲ Toggle</button>
-      </td>
-    </tr>
-  `}).join('');
-  console.log('✅ Transactions table rendered successfully');
 }
 
 // View transaction details
