@@ -576,6 +576,57 @@
         .modal-dialog {
             max-width: 90vw;
         }
+
+        /* Success Modal Mobile Styles */
+        .modal-content {
+            border-radius: 12px !important;
+        }
+
+        .modal-body {
+            padding: 1rem !important;
+        }
+
+        #resultIconWrap {
+            width: 60px !important;
+            height: 60px !important;
+            margin: 0 auto 0.75rem !important;
+        }
+
+        #resultIcon {
+            font-size: 1.5rem !important;
+        }
+
+        #resultTitle {
+            font-size: 1rem !important;
+        }
+
+        #resultSubtitle {
+            font-size: 0.85rem !important;
+        }
+
+        .modal-body > div {
+            margin-bottom: 0.75rem !important;
+        }
+
+        .modal-body > div > div:first-child {
+            font-size: 0.7rem !important;
+        }
+
+        .modal-body > div > div:last-child {
+            padding: 0.5rem 0.75rem !important;
+            font-size: 0.85rem !important;
+        }
+
+        #successOrderId {
+            font-size: 0.85rem !important;
+        }
+
+        #resultPrimaryBtn {
+            padding: 0.6rem !important;
+            font-size: 0.9rem !important;
+            min-height: 40px !important;
+            margin-top: 0.5rem !important;
+        }
     }
 
     /* Small Mobile Devices (320px) */
@@ -620,7 +671,51 @@
         }
 
         .modal-body {
-            padding: 1rem;
+            padding: 0.75rem !important;
+        }
+
+        #resultIconWrap {
+            width: 55px !important;
+            height: 55px !important;
+            margin: 0 auto 0.5rem !important;
+        }
+
+        #resultIcon {
+            font-size: 1.25rem !important;
+        }
+
+        #resultTitle {
+            font-size: 0.95rem !important;
+        }
+
+        #resultSubtitle {
+            font-size: 0.8rem !important;
+        }
+
+        .modal-body > div {
+            margin-bottom: 0.65rem !important;
+        }
+
+        .modal-body > div > div:first-child {
+            font-size: 0.65rem !important;
+        }
+
+        .modal-body > div > div:last-child {
+            padding: 0.45rem 0.65rem !important;
+            font-size: 0.8rem !important;
+        }
+
+        #successOrderId,
+        #successReceiverNumber,
+        #successReference {
+            font-size: 0.8rem !important;
+        }
+
+        #resultPrimaryBtn {
+            padding: 0.55rem !important;
+            font-size: 0.85rem !important;
+            min-height: 38px !important;
+            margin-top: 0.35rem !important;
         }
     }
 
@@ -878,16 +973,9 @@
                     <p id="resultSubtitle" style="color: #6b7280; margin: 0.35rem 0 0 0; font-size: 0.9rem;">Your data is being delivered</p>
                 </div>
                 <div class="modal-body" style="padding: 1.25rem;">
-                    <!-- From Section -->
+                    <!-- Receiver Section -->
                     <div style="margin-bottom: 0.9rem;">
-                        <div style="font-size: 0.75rem; color: #6c757d; margin-bottom: 0.35rem; text-transform: uppercase; font-weight: 600;">From</div>
-                        <div style="background: white; padding: 0.6rem 0.9rem; border-radius: 8px; border: 1px solid #e9ecef;">
-                            <div style="font-size: 0.95rem; color: #333; font-weight: 600;" id="successUserNumber">+233 XXX XXX</div>
-                        </div>
-                    </div>
-                    <!-- To Section -->
-                    <div style="margin-bottom: 0.9rem;">
-                        <div style="font-size: 0.75rem; color: #6c757d; margin-bottom: 0.35rem; text-transform: uppercase; font-weight: 600;">To (Receiver)</div>
+                        <div style="font-size: 0.75rem; color: #6c757d; margin-bottom: 0.35rem; text-transform: uppercase; font-weight: 600;">Receiver</div>
                         <div style="background: white; padding: 0.6rem 0.9rem; border-radius: 8px; border: 1px solid #e9ecef;">
                             <div style="font-size: 0.95rem; color: #333; font-weight: 600;" id="successReceiverNumber">0241234567</div>
                         </div>
@@ -1253,6 +1341,26 @@
                 // Send original amount, backend will apply discount server-side
                 console.log(`💳 Purchase request - Original: ₵${selectedPackage.price.toFixed(2)}, User will pay: ₵${finalPrice.toFixed(2)} (${userDiscount}% discount)`);
 
+                // Allocate Order ID first
+                console.log('📊 Allocating Order ID...');
+                const orderIdResponse = await fetch('/api/allocate-order-id', {
+                    credentials: 'include',
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    }
+                });
+
+                const orderIdData = await orderIdResponse.json();
+                if (!orderIdData.success || !orderIdData.orderId) {
+                    console.error('❌ Failed to allocate Order ID');
+                    notyf.error('Failed to allocate Order ID. Please try again.');
+                    return;
+                }
+
+                const allocatedOrderId = orderIdData.orderId;
+                console.log(`✅ Order ID allocated: ${allocatedOrderId}`);
+
                 const response = await fetch('/api/purchase-data', {
                     credentials: 'include',
                     method: 'POST',
@@ -1264,7 +1372,8 @@
                         volume: volume,
                         phoneNumber: phoneNumber,
                         amount: selectedPackage.price,
-                        packageName: selectedPackage.name
+                        packageName: selectedPackage.name,
+                        orderId: allocatedOrderId
                     })
                 });
 
@@ -1291,7 +1400,7 @@
                     // Show success modal with order details
                     showResultModal({
                         status: 'success',
-                        orderId: result.orderId,
+                        orderId: allocatedOrderId, // Use the allocated Order ID
                         reference: result.reference || result.ref || result.transactionReference,
                         phoneNumber: phoneNumber,
                         packageName: selectedPackage.name,
@@ -1304,7 +1413,7 @@
                     // Check if it's an out of stock error
                     const msg = result.error || (result.isOutOfStock ? 'Out of Stock - Provider has insufficient balance' : 'Purchase failed');
                     console.log('📦 Purchase failed:', msg);
-                    showResultModal({ status: 'failed', message: msg, orderId: result.orderId });
+                    showResultModal({ status: 'failed', message: msg, orderId: allocatedOrderId });
 
                     // Reset button
                     confirmBtn.disabled = false;

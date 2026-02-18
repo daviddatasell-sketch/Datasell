@@ -776,7 +776,7 @@ body.dark-mode .bottom-nav a.active {
                             type="text" 
                             id="searchReference" 
                             class="search-input" 
-                            placeholder="Ref"
+                            placeholder="Order ID"
                             onkeyup="filterOrders()"
                         >
                     </div>
@@ -956,6 +956,7 @@ body.dark-mode .bottom-nav a.active {
 
             if (referenceSearch) {
                 filtered = filtered.filter(order => 
+                    (order.orderId && String(order.orderId).toLowerCase().includes(referenceSearch)) ||
                     (order.reference && String(order.reference).toLowerCase().includes(referenceSearch)) ||
                     (order.id && String(order.id).toLowerCase().includes(referenceSearch))
                 );
@@ -1009,8 +1010,8 @@ body.dark-mode .bottom-nav a.active {
                                     <div class="detail-value">${date}</div>
                                 </div>
                                 <div class="detail-item">
-                                    <div class="detail-label">Reference</div>
-                                    <div class="detail-value">${order.reference || 'Pending'}</div>
+                                    <div class="detail-label">Order ID</div>
+                                    <div class="detail-value">${order.orderId || 'Pending'}</div>
                                 </div>
                                 <div class="detail-item">
                                     <div class="detail-label">Transaction ID</div>

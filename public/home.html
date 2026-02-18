@@ -1021,6 +1021,276 @@
     }
   </style>
 
+  <!-- WHATSAPP COMMUNITY POPUP MODAL -->
+  <div id="whatsappPopup" class="whatsapp-popup-overlay">
+    <div class="whatsapp-popup-card">
+      <!-- Close Button -->
+      <button class="whatsapp-close-btn" onclick="closeWhatsappPopup()">
+        <i class="fas fa-times"></i>
+      </button>
+
+      <!-- Decorative Icon -->
+      <div class="whatsapp-icon-container">
+        <i class="fab fa-whatsapp"></i>
+      </div>
+
+      <!-- Heading -->
+      <h2 class="whatsapp-heading">Join Our WhatsApp Channel Today!!</h2>
+      
+      <!-- Subheading -->
+      <p class="whatsapp-subheading">Stay connected and get exclusive updates</p>
+
+      <!-- Features List -->
+      <div class="whatsapp-features">
+        <div class="feature-item">
+          <i class="fas fa-bolt"></i>
+          <span>Instant Updates</span>
+        </div>
+        <div class="feature-item">
+          <i class="fas fa-star"></i>
+          <span>Exclusive Community</span>
+        </div>
+        <div class="feature-item">
+          <i class="fas fa-comments"></i>
+          <span>Direct Communication</span>
+        </div>
+      </div>
+
+      <!-- CTA Button -->
+      <a href="https://whatsapp.com/channel/0029VbBh9v75kg7FGrnjMp03" target="_blank" class="whatsapp-join-btn">
+        <i class="fab fa-whatsapp"></i> Join Our WhatsApp Channel
+      </a>
+
+      <!-- Dismiss Text -->
+      <p class="whatsapp-dismiss-text">Not interested? You can always join later</p>
+    </div>
+  </div>
+
+  <style>
+    /* WhatsApp Popup Styles */
+    .whatsapp-popup-overlay {
+      display: none;
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background: rgba(0, 0, 0, 0.5);
+      backdrop-filter: blur(4px);
+      z-index: 10000;
+      align-items: center;
+      justify-content: center;
+      padding: 1rem;
+      animation: fadeIn 0.3s ease-out;
+    }
+
+    .whatsapp-popup-overlay.show {
+      display: flex;
+    }
+
+    @keyframes fadeIn {
+      from {
+        opacity: 0;
+      }
+      to {
+        opacity: 1;
+      }
+    }
+
+    .whatsapp-popup-card {
+      background: linear-gradient(135deg, #ffffff 0%, #f0f7ff 100%);
+      border-radius: 20px;
+      padding: 2.5rem 2rem;
+      max-width: 400px;
+      width: 100%;
+      position: relative;
+      box-shadow: 0 20px 60px rgba(0, 0, 0, 0.15);
+      animation: slideUp 0.4s ease-out;
+      border: 2px solid rgba(37, 211, 102, 0.1);
+    }
+
+    @keyframes slideUp {
+      from {
+        transform: translateY(50px);
+        opacity: 0;
+      }
+      to {
+        transform: translateY(0);
+        opacity: 1;
+      }
+    }
+
+    .whatsapp-close-btn {
+      position: absolute;
+      top: 1rem;
+      right: 1rem;
+      background: rgba(37, 211, 102, 0.1);
+      border: none;
+      width: 36px;
+      height: 36px;
+      border-radius: 50%;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 1.2rem;
+      color: #25D366;
+      transition: all 0.3s ease;
+      z-index: 10001;
+    }
+
+    .whatsapp-close-btn:hover {
+      background: rgba(37, 211, 102, 0.2);
+      transform: rotate(90deg);
+    }
+
+    .whatsapp-icon-container {
+      text-align: center;
+      margin-bottom: 1.5rem;
+      font-size: 3rem;
+      color: #25D366;
+      animation: bounce 0.6s ease-out;
+    }
+
+    @keyframes bounce {
+      0% {
+        transform: scale(0.3);
+        opacity: 0;
+      }
+      50% {
+        transform: scale(1.1);
+      }
+      100% {
+        transform: scale(1);
+        opacity: 1;
+      }
+    }
+
+    .whatsapp-heading {
+      font-size: 1.5rem;
+      font-weight: 700;
+      color: #1a1a2e;
+      text-align: center;
+      margin: 0 0 0.5rem 0;
+      line-height: 1.3;
+    }
+
+    .whatsapp-subheading {
+      font-size: 0.95rem;
+      color: #6c757d;
+      text-align: center;
+      margin: 0 0 1.5rem 0;
+      font-weight: 500;
+    }
+
+    .whatsapp-features {
+      display: flex;
+      flex-direction: column;
+      gap: 0.9rem;
+      margin-bottom: 1.8rem;
+    }
+
+    .feature-item {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+      padding: 0.75rem 1rem;
+      background: rgba(37, 211, 102, 0.05);
+      border-radius: 10px;
+      font-size: 0.95rem;
+      color: #333;
+      transition: all 0.3s ease;
+    }
+
+    .feature-item:hover {
+      background: rgba(37, 211, 102, 0.1);
+      transform: translateX(5px);
+    }
+
+    .feature-item i {
+      color: #25D366;
+      font-size: 1.1rem;
+      min-width: 20px;
+    }
+
+    .whatsapp-join-btn {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 0.75rem;
+      width: 100%;
+      background: linear-gradient(135deg, #25D366 0%, #1aa952 100%);
+      color: white;
+      padding: 1rem 1.5rem;
+      border-radius: 12px;
+      text-decoration: none;
+      font-weight: 600;
+      font-size: 1rem;
+      transition: all 0.3s ease;
+      border: none;
+      cursor: pointer;
+      box-shadow: 0 8px 20px rgba(37, 211, 102, 0.3);
+    }
+
+    .whatsapp-join-btn:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 12px 28px rgba(37, 211, 102, 0.4);
+      background: linear-gradient(135deg, #1aa952 0%, #128c42 100%);
+    }
+
+    .whatsapp-join-btn:active {
+      transform: translateY(0);
+    }
+
+    .whatsapp-join-btn i {
+      font-size: 1.2rem;
+    }
+
+    .whatsapp-dismiss-text {
+      text-align: center;
+      font-size: 0.8rem;
+      color: #999;
+      margin-top: 1rem;
+      margin-bottom: 0;
+      cursor: pointer;
+      transition: color 0.3s ease;
+    }
+
+    .whatsapp-dismiss-text:hover {
+      color: #25D366;
+    }
+
+    /* Mobile Responsive */
+    @media (max-width: 480px) {
+      .whatsapp-popup-card {
+        padding: 2rem 1.5rem;
+        border-radius: 16px;
+      }
+
+      .whatsapp-heading {
+        font-size: 1.3rem;
+      }
+
+      .whatsapp-subheading {
+        font-size: 0.9rem;
+      }
+
+      .whatsapp-icon-container {
+        font-size: 2.5rem;
+      }
+
+      .whatsapp-join-btn {
+        padding: 0.9rem 1rem;
+        font-size: 0.95rem;
+      }
+
+      .feature-item {
+        padding: 0.65rem 0.875rem;
+        font-size: 0.9rem;
+      }
+    }
+  </style>
+
   <!-- FOOTER -->
   <footer>
     <p><strong>© 2026 DataSell Ghana.</strong> All Rights Reserved.</p>
@@ -1039,6 +1309,46 @@
   </footer>
 
   <script>
+    // WhatsApp Popup Management
+    function showWhatsappPopup() {
+      const popup = document.getElementById('whatsappPopup');
+      if (popup) {
+        popup.classList.add('show');
+      }
+    }
+
+    function closeWhatsappPopup() {
+      const popup = document.getElementById('whatsappPopup');
+      if (popup) {
+        popup.classList.remove('show');
+        // Store in localStorage so it doesn't show again for 24 hours
+        localStorage.setItem('whatsappPopupDismissed', new Date().getTime());
+      }
+    }
+
+    // Close popup when clicking outside the card
+    document.getElementById('whatsappPopup')?.addEventListener('click', function(e) {
+      if (e.target === this) {
+        closeWhatsappPopup();
+      }
+    });
+
+    // Initialize WhatsApp Popup on page load
+    function initializeWhatsappPopup() {
+      const lastDismissed = localStorage.getItem('whatsappPopupDismissed');
+      const now = new Date().getTime();
+      const fiveMinutes = 5 * 60 * 1000; // 5 minutes in milliseconds
+
+      // Show popup if it hasn't been dismissed or if 5 minutes have passed
+      if (!lastDismissed || (now - parseInt(lastDismissed)) > fiveMinutes) {
+        // Show immediately when page loads
+        showWhatsappPopup();
+      }
+    }
+
+    // Run on page load
+    document.addEventListener('DOMContentLoaded', initializeWhatsappPopup);
+
     // Animate the daily users counter from 1 to 30,000+
     function animateCounter() {
       const counterElement = document.getElementById('userCounter');

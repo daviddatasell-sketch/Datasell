@@ -1440,14 +1440,14 @@
                         <table id="transactionsTable">
                             <thead>
                                 <tr>
-                                    <th>Reference</th>
+                                    <th>Order ID</th>
                                     <th>User</th>
                                     <th>Package</th>
                                     <th>Network</th>
                                     <th>Phone</th>
                                     <th>Amount</th>
                                     <th>Status</th>
-                                    <th>Date</th>
+                                    <th>Date/Time</th>
                                     <th>Actions</th>
                                 </tr>
                             </thead>
@@ -2894,14 +2894,14 @@ async function loadTransactions() {
         const statusColor = (t.status === 'success' || t.status === 'delivered' || t.status === 'processing') ? '#10b981' : t.status === 'failed' ? '#ef4444' : '#f59e0b';
         return `
         <tr>
-          <td><code>${(t.reference || 'N/A').substring(0, 8)}</code></td>
+          <td><code>${t.orderId || (t.reference || 'N/A').substring(0, 8)}</code></td>
           <td>${t.userName || 'N/A'}</td>
           <td>${t.packageName || 'N/A'}</td>
           <td>${t.network || 'N/A'}</td>
           <td>${t.phoneNumber || t.phone || 'N/A'}</td>
           <td>₵${parseFloat(t.amount || 0).toFixed(2)}</td>
           <td><span style="color: ${statusColor}">${displayStatus}</span></td>
-          <td>${new Date(t.timestamp).toLocaleDateString()}</td>
+          <td>${new Date(t.timestamp).toLocaleDateString()} ${new Date(t.timestamp).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</td>
           <td>
             <button class="btn btn-sm" onclick="viewTransactionDetails('${t.id}')">Details</button>
             <button class="btn btn-sm btn-outline-secondary ms-2" onclick="adminToggleOrderStatus('${t.id}')" style="padding: 4px 8px; font-size: 12px;">⟲ Toggle</button>

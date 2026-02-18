@@ -4079,15 +4079,52 @@ app.get('/api/packages/:network', requireAuth, async (req, res) => {
   }
 });
 
+// ========== ORDER ID GENERATION SYSTEM ==========
+// Function to generate next sequential Order ID
+async function generateNextOrderId() {
+  try {
+    const counterRef = admin.database().ref('system/orderIdCounter');
+    const snapshot = await counterRef.once('value');
+    let currentId = snapshot.val() || 110000; // Start from 110000
+    
+    const nextId = currentId + 1;
+    await counterRef.set(nextId);
+    
+    console.log(`📊 Order ID generated: ${nextId} (Previous: ${currentId})`);
+    return nextId;
+  } catch (error) {
+    console.error('❌ Error generating Order ID:', error);
+    throw error;
+  }
+}
+
+// Endpoint to allocate Order ID (called before purchase)
+app.post('/api/allocate-order-id', requireAuth, async (req, res) => {
+  try {
+    const orderId = await generateNextOrderId();
+    res.json({
+      success: true,
+      orderId: orderId
+    });
+  } catch (error) {
+    console.error('Error allocating Order ID:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to allocate Order ID'
+    });
+  }
+});
+// ========== END ORDER ID GENERATION SYSTEM ==========
+
 // Enhanced Purchase with wallet
 app.post('/api/purchase-data', requireAuth, async (req, res) => {
   let transactionRef = null;
-  const { network, volume, phoneNumber, amount, packageName } = req.body;
+  const { network, volume, phoneNumber, amount, packageName, orderId } = req.body;
   const userId = req.session.user.uid;
   
   try {
     
-    console.log('🔄 Purchase request received:', { network, volume, phoneNumber, amount, packageName });
+    console.log('🔄 Purchase request received:', { network, volume, phoneNumber, amount, packageName, orderId });
 
     // Validation
     if (!network || !volume || !phoneNumber || !amount || !packageName) {
@@ -4174,6 +4211,7 @@ app.post('/api/purchase-data', requireAuth, async (req, res) => {
     
     const initialOrderData = {
       userId,
+      orderId: orderId, // Add the pre-allocated Order ID
       network,
       packageName,
       volume: volumeValue,
@@ -4264,6 +4302,7 @@ app.post('/api/purchase-data', requireAuth, async (req, res) => {
       res.json({ 
         success: true, 
         data: purchaseData,
+        orderId: orderId, // Include the Order ID in response
         newBalance: newBalance,
         reference: reference,
         message: 'Data purchase successful!',

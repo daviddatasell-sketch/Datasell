@@ -696,6 +696,17 @@ body {
     .app-title {
         font-size: 1.3rem;
     }
+
+    #greetingText {
+        font-size: 0.85rem !important;
+        letter-spacing: 1px !important;
+        padding: 0.2rem 0.4rem !important;
+    }
+
+    #userNameDisplay {
+        font-size: 0.7rem !important;
+        margin-top: 2px !important;
+    }
     
     .user-avatar {
         width: 36px;
@@ -832,6 +843,15 @@ body {
 
 /* Small Mobile Devices */
 @media (max-width: 375px) {
+    #greetingText {
+        font-size: 0.8rem !important;
+        letter-spacing: 0.5px !important;
+    }
+
+    #userNameDisplay {
+        font-size: 0.65rem !important;
+    }
+    
     .network-card {
         padding: 0.75rem;
         min-height: 90px;
@@ -946,16 +966,23 @@ body.dark-mode {
 }
 
 body.dark-mode .app-header {
-    background: #0d0b2f;
-    border-bottom-color: #1a1841;
+    background: linear-gradient(135deg, #1a1a3e 0%, #2d1b4e 100%);
+    border-bottom-color: #3d2d5f;
+    box-shadow: 0 4px 15px rgba(0, 0, 0, 0.4);
 }
 
 body.dark-mode .app-title {
-    color: #e0e0e0;
+    color: #ffffff !important;
+    text-shadow: 0 2px 4px rgba(0,0,0,0.3);
+}
+
+body.dark-mode #greetingText {
+    color: #ffffff !important;
 }
 
 body.dark-mode #userNameDisplay {
-    color: #a0a0a0;
+    color: rgba(255,255,255,0.9);
+    text-shadow: 0 1px 3px rgba(0,0,0,0.3);
 }
 
 body.dark-mode .card,
@@ -1201,12 +1228,12 @@ body.dark-mode [data-network="mtn"] .network-name {
         checkAuthentication();
     </script>
     
-    <header class="app-header" style="padding: 0.5rem 0; border-bottom: 1px solid #e9ecef; background: white;">
+    <header class="app-header" style="padding: 0.5rem 0; border-bottom: 1px solid #e9ecef; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); box-shadow: 0 4px 15px rgba(102, 126, 234, 0.2);">
         <div class="container px-2">
             <div class="d-flex justify-content-between align-items-center" style="min-height: 44px;">
                 <div class="d-flex align-items-center flex-column" style="text-align: left;">
-                    <h1 class="app-title" id="greetingText" style="font-size: 1.3rem; font-weight: 800; margin: 0; color: #333; letter-spacing: 1px;">Mema wo Akye</h1>
-                    <span id="userNameDisplay" style="font-size: 0.85rem; font-weight: 500; color: #666; margin-top: 2px;">User</span>
+                    <h1 class="app-title" id="greetingText" style="font-size: 0.9rem; font-weight: 900; margin: 0; color: #09082b; letter-spacing: 2px; text-transform: uppercase; text-shadow: 0 2px 6px rgba(0,0,0,0.3); padding: 0.25rem 0.5rem; border-radius: 4px;">Mema wo Akye</h1>
+                    <span id="userNameDisplay" style="font-size: 0.75rem; font-weight: 700; color: rgba(255,255,255,0.95); margin-top: 3px; text-shadow: 0 1px 3px rgba(0,0,0,0.2); letter-spacing: 0.5px;">User</span>
                 </div>
                 <div style="display:flex;align-items:center;gap:10px;">
                     <button id="darkModeToggle" class="btn btn-link" title="Toggle Dark Mode" style="color:#333;font-size:18px;border:0;background:transparent;padding:0;position:relative;cursor:pointer;">
