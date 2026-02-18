@@ -994,14 +994,19 @@ document.getElementById('loginForm').addEventListener('submit', async (e) => {
         });
         
         console.log('📋 Login response status:', response.status);
+        console.log('📋 Response headers:', response.headers);
+        
         const data = await response.json();
-        console.log('📊 Login response:', { success: data.success, message: data.message });
+        console.log('📊 Login response:', { success: data.success, message: data.message, error: data.error });
         
         if (data.success) {
             console.log('✅ Login successful, redirecting to dashboard...');
             notyf.success('✅ Login successful!');
             // Redirect immediately without delay
-            window.location.href = '/dashboard';
+            setTimeout(() => {
+                console.log('🔄 Executing redirect to /dashboard');
+                window.location.href = '/dashboard';
+            }, 500);
         } else {
             console.log('❌ Login failed:', data.error);
             notyf.error(data.error || 'Login failed');
@@ -1010,6 +1015,8 @@ document.getElementById('loginForm').addEventListener('submit', async (e) => {
         }
     } catch (error) {
         console.error('❌ Login error:', error);
+        console.error('❌ Error message:', error.message);
+        console.error('❌ Error stack:', error.stack);
         notyf.error('An error occurred. Please try again.');
         submitBtn.innerHTML = originalText;
         submitBtn.disabled = false;
@@ -1026,10 +1033,13 @@ async function checkAuth() {
         // Check for authenticated flag (different endpoints may have different response structures)
         if (data.authenticated === true || (data.success && data.user)) {
             console.log('✅ User already authenticated, redirecting to dashboard');
-            window.location.href = '/dashboard';
+            // Don't redirect on login page - let the login form handle redirect
+            if (!window.location.pathname.includes('/login')) {
+                window.location.href = '/dashboard';
+            }
         }
     } catch (error) {
-        console.log('ℹ️ Auth check failed (expected if not logged in):', error);
+        console.log('ℹ️ Auth check failed (expected if not logged in):', error.message);
         // Not authenticated, stay on login page
     }
 }
