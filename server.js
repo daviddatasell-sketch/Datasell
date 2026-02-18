@@ -4084,13 +4084,20 @@ app.get('/api/packages/:network', requireAuth, async (req, res) => {
 async function generateNextOrderId() {
   try {
     const counterRef = admin.database().ref('system/orderIdCounter');
-    const snapshot = await counterRef.once('value');
-    let currentId = snapshot.val() || 110000; // Start from 110000
     
-    const nextId = currentId + 1;
-    await counterRef.set(nextId);
-    
-    console.log(`📊 Order ID generated: ${nextId} (Previous: ${currentId})`);
+    // Use a transaction to ensure atomic increment and avoid race conditions
+    const result = await counterRef.transaction(currentValue => {
+      const newValue = (currentValue || 110000) + 1;
+      console.log(`📊 Order ID transaction: ${currentValue || 110000} → ${newValue}`);
+      return newValue;
+    });
+
+    if (!result.committed) {
+      throw new Error('Transaction failed - data not committed');
+    }
+
+    const nextId = result.snapshot.val();
+    console.log(`📊 Order ID generated: ${nextId}`);
     return nextId;
   } catch (error) {
     console.error('❌ Error generating Order ID:', error);
@@ -4233,13 +4240,15 @@ app.post('/api/purchase-data', requireAuth, async (req, res) => {
     };
     
     await transactionRef.set(initialOrderData);
-    console.log('✅ Order record created in Firebase:', {
+    console.log('✅ Order record created in Firebase with Order ID:', {
       firebaseId: transactionId,
+      orderId: orderId,
       reference: reference,
       userId: userId,
       network: network,
       packageName: packageName,
-      amount: amount
+      amount: finalAmount,
+      status: 'processing'
     });
 
     // Notify user that payment/order is received and processing
