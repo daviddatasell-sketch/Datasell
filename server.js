@@ -2539,6 +2539,7 @@ app.get('/api/orders', requireAuth, async (req, res) => {
           volume: transaction.volume || '0MB',
           status: transaction.status || 'processing',
           reference: transaction.reference || '',
+          orderId: transaction.orderId || null,
           transactionId: transaction.transactionId || transaction.datamartTransactionId || transaction.hubnetTransactionId || '',
           timestamp: transaction.timestamp || new Date().toISOString(),
           reason: transaction.reason || ''
@@ -2576,6 +2577,7 @@ app.get('/api/orders', requireAuth, async (req, res) => {
           volume: transaction.volume || '0MB',
           status: transaction.status || 'processing',
           reference: transaction.reference || '',
+          orderId: transaction.orderId || null,
           transactionId: transaction.transactionId || transaction.datamartTransactionId || transaction.hubnetTransactionId || '',
           timestamp: transaction.timestamp || new Date().toISOString(),
           reason: transaction.reason || ''
