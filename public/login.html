@@ -970,6 +970,7 @@ document.querySelector('.toggle-password')?.addEventListener('click', function()
 // Login form submission - Remember Me is now OPTIONAL
 document.getElementById('loginForm').addEventListener('submit', async (e) => {
     e.preventDefault();
+    console.log('✅ Form submitted!');
     
     const email = document.getElementById('email').value;
     const password = document.getElementById('password').value;
@@ -979,6 +980,7 @@ document.getElementById('loginForm').addEventListener('submit', async (e) => {
     const originalText = submitBtn.innerHTML;
     
     try {
+        console.log('✅ Starting login...');
         submitBtn.innerHTML = '<i class="fas fa-spinner fa-spin me-2"></i>Signing in...';
         submitBtn.disabled = true;
         
