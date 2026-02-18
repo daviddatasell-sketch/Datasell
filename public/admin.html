@@ -1434,6 +1434,9 @@
                                 <option value="refunded">Refunded</option>
                             </select>
                             <input type="text" id="transactionSearch" placeholder="Search..." class="form-control">
+                            <button class="btn btn-primary" onclick="loadTransactions()" title="Refresh orders list" style="white-space: nowrap;">
+                                🔄 Refresh
+                            </button>
                         </div>
                     </div>
                     <div class="table-container">
@@ -2887,15 +2890,25 @@ function addPackage() {
   // Load Transactions Function
 async function loadTransactions() {
   try {
+    console.log('📋 Loading transactions for admin dashboard...');
     const response = await fetch('/api/admin/transactions', { credentials: 'include' });
     const data = await response.json();
     
+    console.log('✅ Transactions response:', data);
+    
     if (data.success && data.transactions) {
+      console.log(`📊 Found ${data.transactions.length} transactions`);
       const tbody = document.getElementById('transactionsTableBody');
+      if (!tbody) {
+        console.error('❌ transactionsTableBody element not found');
+        return;
+      }
+      
       tbody.innerHTML = data.transactions.map(t => {
         // Display "Success" for processing, delivered, or success; otherwise show actual status
         const displayStatus = (t.status === 'success' || t.status === 'delivered' || t.status === 'processing') ? 'Success' : t.status || 'unknown';
         const statusColor = (t.status === 'success' || t.status === 'delivered' || t.status === 'processing') ? '#10b981' : t.status === 'failed' ? '#ef4444' : '#f59e0b';
+        console.log(`📝 Rendering order: orderId=${t.orderId}, reference=${t.reference}, userName=${t.userName}`);
         return `
         <tr>
           <td><code>${t.orderId || (t.reference || 'N/A').substring(0, 8)}</code></td>
@@ -2912,11 +2925,13 @@ async function loadTransactions() {
           </td>
         </tr>
       `}).join('');
+      console.log('✅ Transactions table rendered successfully');
     } else {
+      console.warn('⚠️ No transactions or API error:', data);
       document.getElementById('transactionsTableBody').innerHTML = '<tr><td colspan="10" class="text-center">No transactions found</td></tr>';
     }
   } catch (error) {
-    console.error('Error loading transactions:', error);
+    console.error('❌ Error loading transactions:', error);
     document.getElementById('transactionsTableBody').innerHTML = '<tr><td colspan="10" class="text-center" style="color: #ef4444;">Failed to load transactions</td></tr>';
   }
 }
