@@ -1012,7 +1012,7 @@ body.dark-mode .bottom-nav a.active {
                                 </div>
                                 <div class="detail-item">
                                     <div class="detail-label">Order ID</div>
-                                    <div class="detail-value">${order.orderId || 'Pending'}</div>
+                                    <div class="detail-value">${order.orderId || order.id?.substring(0, 8) || 'N/A'}</div>
                                 </div>
                                 <div class="detail-item">
                                     <div class="detail-label">Transaction ID</div>

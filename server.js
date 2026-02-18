@@ -2550,7 +2550,12 @@ app.get('/api/orders', requireAuth, async (req, res) => {
       console.log(`✅ Found ${orders.length} orders using orderByChild`);
       // Log first order for debugging
       if (orders.length > 0) {
-        console.log('🔍 First order sample:', JSON.stringify(orders[0], null, 2));
+        console.log('🔍 First order sample (orderByChild):', JSON.stringify({
+          packageName: orders[0].packageName,
+          orderId: orders[0].orderId,
+          transactionId: orders[0].transactionId,
+          status: orders[0].status
+        }, null, 2));
       }
 
       res.json({
@@ -2590,6 +2595,15 @@ app.get('/api/orders', requireAuth, async (req, res) => {
         .slice(0, limit); // Limit to most recent N orders
 
       console.log(`✅ Found ${orders.length} orders using fallback method`);
+      // Log first order for debugging
+      if (orders.length > 0) {
+        console.log('🔍 First order sample (fallback):', JSON.stringify({
+          packageName: orders[0].packageName,
+          orderId: orders[0].orderId,
+          transactionId: orders[0].transactionId,
+          status: orders[0].status
+        }, null, 2));
+      }
 
       res.json({
         success: true,
