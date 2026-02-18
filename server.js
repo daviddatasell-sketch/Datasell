@@ -4150,6 +4150,15 @@ app.post('/api/purchase-data', requireAuth, async (req, res) => {
     
     console.log('🔄 Purchase request received:', { network, volume, phoneNumber, amount, packageName, orderId });
 
+    // 🚫 REJECT AIRTELTIGO PURCHASES - CURRENTLY OUT OF STOCK
+    if (network && network.toLowerCase() === 'at') {
+      console.warn(`⚠️ Attempt to purchase AT package by user ${userId} - currently out of stock`);
+      return res.status(403).json({ 
+        success: false, 
+        error: 'Airteltigo packages are currently out of stock. Please try MTN instead.' 
+      });
+    }
+
     // Validation
     if (!network || !volume || !phoneNumber || !amount || !packageName) {
       return res.status(400).json({ 
@@ -4269,12 +4278,17 @@ app.post('/api/purchase-data', requireAuth, async (req, res) => {
     });
 
     // Notify user that payment/order is received and processing
-    try {
-      const notifyMsg = `Order received. Your ${packageName} will be delivered to ${phoneNumber} within 1 to 30 minutes. If any troubles contact support on datasellgh@gmail.com`;
-      await sendSmsToUser(userId, phoneNumber, notifyMsg);
-      console.log('📩 Order-created SMS sent for transaction', transactionId);
-    } catch (smsErr) {
-      console.error('❌ Failed to send order-created SMS for', transactionId, smsErr);
+    // 🚫 SKIP SMS FOR AIRTELTIGO PACKAGES
+    if (network && network.toLowerCase() !== 'at') {
+      try {
+        const notifyMsg = `Order received. Your ${packageName} will be delivered to ${phoneNumber} within 1 to 30 minutes. If any troubles contact support on datasellgh@gmail.com`;
+        await sendSmsToUser(userId, phoneNumber, notifyMsg);
+        console.log('📩 Order-created SMS sent for transaction', transactionId);
+      } catch (smsErr) {
+        console.error('❌ Failed to send order-created SMS for', transactionId, smsErr);
+      }
+    } else {
+      console.log('📵 SMS skipped for AT (Airteltigo) package');
     }
 
     // Map network to DataMart format
