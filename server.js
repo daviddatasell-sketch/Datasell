@@ -2548,6 +2548,10 @@ app.get('/api/orders', requireAuth, async (req, res) => {
         .slice(0, limit); // Limit to most recent N orders
 
       console.log(`✅ Found ${orders.length} orders using orderByChild`);
+      // Log first order for debugging
+      if (orders.length > 0) {
+        console.log('🔍 First order sample:', JSON.stringify(orders[0], null, 2));
+      }
 
       res.json({
         success: true,

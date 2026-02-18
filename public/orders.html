@@ -846,6 +846,7 @@ body.dark-mode .bottom-nav a.active {
                 const ordersData = await ordersRes.json();
                 if (ordersData.success) {
                     allOrders = ordersData.orders.map(o => ({ ...o, id: o.id }));
+                    console.log('📦 Orders loaded:', allOrders);
                     displayOrders(allOrders);
                 } else {
                     throw new Error('Failed to load orders');
