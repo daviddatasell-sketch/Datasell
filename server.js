@@ -4238,13 +4238,13 @@ app.post('/api/purchase-data', requireAuth, async (req, res) => {
 
     const reference = `DS-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
     
-    // Create order record first
+    // Create order record first (without Order ID - will be allocated only if purchase succeeds)
     transactionRef = admin.database().ref('transactions').push();
     const transactionId = transactionRef.key; // Get the Firebase ID
     
     const initialOrderData = {
       userId,
-      orderId: orderId, // Add the pre-allocated Order ID
+      orderId: null,  // 🚫 Don't allocate Order ID yet - only for successful purchases
       network,
       packageName,
       volume: volumeValue,
@@ -4266,9 +4266,9 @@ app.post('/api/purchase-data', requireAuth, async (req, res) => {
     };
     
     await transactionRef.set(initialOrderData);
-    console.log('✅ Order record created in Firebase with Order ID:', {
+    console.log('✅ Order record created in Firebase WITHOUT Order ID (will be allocated after success):', {
       firebaseId: transactionId,
-      orderId: orderId,
+      orderId: null,
       reference: reference,
       userId: userId,
       network: network,
@@ -4322,9 +4322,30 @@ app.post('/api/purchase-data', requireAuth, async (req, res) => {
       const newBalance = userData.walletBalance - finalAmount;
       await userRef.update({ walletBalance: newBalance });
 
+      // 📊 ALLOCATE ORDER ID ONLY FOR SUCCESSFUL PURCHASES
+      let allocatedOrderId = null;
+      if (network && network.toLowerCase() !== 'at') {
+        try {
+          const counterRef = admin.database().ref('system/orderIdCounter');
+          const result = await counterRef.transaction(currentValue => {
+            const newValue = (currentValue || 110000) + 1;
+            return newValue;
+          });
+          if (result.committed) {
+            allocatedOrderId = result.snapshot.val();
+            console.log(`✅ Order ID allocated for successful purchase: ${allocatedOrderId}`);
+          } else {
+            console.error('❌ Failed to allocate Order ID');
+          }
+        } catch (err) {
+          console.error('❌ Error allocating Order ID:', err);
+        }
+      }
+
       const purchaseData = datamartData.data;
       await transactionRef.update({
         status: 'processing',
+        orderId: allocatedOrderId, // Set Order ID only for successful purchases
         transactionId: purchaseData.purchaseId || purchaseData.transactionReference,
         datamartTransactionId: purchaseData.purchaseId || purchaseData.transactionReference,
         datamartResponse: purchaseData
@@ -4333,6 +4354,7 @@ app.post('/api/purchase-data', requireAuth, async (req, res) => {
       console.log('✅ Purchase successful, order updated to success:', {
         reference: reference,
         transactionId: purchaseData.purchaseId || purchaseData.transactionReference,
+        orderId: allocatedOrderId,
         newBalance: newBalance,
         originalAmount: amount,
         discountApplied: discountAmount.toFixed(2),
@@ -4342,7 +4364,7 @@ app.post('/api/purchase-data', requireAuth, async (req, res) => {
       res.json({ 
         success: true, 
         data: purchaseData,
-        orderId: orderId, // Include the Order ID in response
+        orderId: allocatedOrderId, // Include the Order ID in response
         newBalance: newBalance,
         reference: reference,
         message: 'Data purchase successful!',
@@ -4356,13 +4378,15 @@ app.post('/api/purchase-data', requireAuth, async (req, res) => {
       });
     } else {
       // FAILURE: Update order status but DON'T deduct balance
+      // 🚫 DON'T ALLOCATE ORDER ID FOR FAILED PURCHASES
       await transactionRef.update({
         status: 'failed',
+        orderId: null,  // Explicitly set Order ID to null for failed purchases
         datamartResponse: datamartData,
         reason: datamartData.message || 'Purchase failed'
       });
 
-      console.log('❌ Purchase failed, order updated to failed');
+      console.log('❌ Purchase failed, order updated to failed - NO ORDER ID ALLOCATED');
 
       // Check if it's a provider balance issue or stock issue
       const isOutOfStock = isProviderBalanceError(datamartData);

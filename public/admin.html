@@ -1728,9 +1728,18 @@ function displayRecentActivity(activities) {
   
   const html = validActivities.slice(0, 5).map(item => {
     const icon = item.type === 'payment' ? '💳' : '📊';
-    const statusColor = (item.status === 'success' || item.status === 'delivered' || item.status === 'processing') ? '#10b981' : item.status === 'pending' ? '#f59e0b' : '#ef4444';
-    // Display "Success" for any order with processing, delivered, or success status
-    const displayStatus = (item.status === 'success' || item.status === 'delivered' || item.status === 'processing') ? 'Success' : item.status || 'pending';
+    
+    // For transactions (orders), always show "Success" in green
+    // For payments, use the actual status
+    let statusColor = '#10b981'; // Green by default
+    let displayStatus = 'Success';
+    
+    if (item.type === 'payment') {
+      // Payments show their actual status
+      statusColor = (item.status === 'success' || item.status === 'delivered' || item.status === 'processing') ? '#10b981' : item.status === 'pending' ? '#f59e0b' : '#ef4444';
+      displayStatus = (item.status === 'success' || item.status === 'delivered' || item.status === 'processing') ? 'Success' : item.status || 'pending';
+    }
+    // Transactions (orders) always show as "Success" in green even if processing
     
     return `
       <div style="padding: 1rem; border-bottom: 1px solid var(--border-color); display: flex; align-items: center; gap: 1rem;">
@@ -2361,31 +2370,7 @@ document.addEventListener('DOMContentLoaded', function() {
 });
 
 // Display Recent Activity in Dashboard
-function displayRecentActivity(activity) {
-  const recentActivityDiv = document.getElementById('recentActivity');
-  if (!activity || activity.length === 0) {
-    recentActivityDiv.innerHTML = '<p style="color: #999;">No recent activity yet</p>';
-    return;
-  }
-  
-  const html = activity.map(item => {
-    const timestamp = new Date(item.timestamp).toLocaleString();
-    const icon = item.type === 'payment' ? '💳' : '📊';
-    return `
-      <div style="border-bottom: 1px solid #e5e7eb; padding: 12px 0; display: flex; gap: 12px;">
-        <span style="font-size: 20px;">${icon}</span>
-        <div style="flex: 1;">
-          <p style="margin: 0; font-size: 14px; font-weight: 500;">${item.description} <span style="color: #6b7280; font-weight: 400;">by ${item.userName}</span></p>
-          <p style="margin: 4px 0 0 0; font-size: 12px; color: #6b7280;">
-            ${timestamp} • Amount: ₵${parseFloat(item.amount || 0).toFixed(2)} • Status: <span style="color: ${(item.status === 'success' || item.status === 'delivered') ? '#10b981' : item.status === 'pending' ? '#f59e0b' : '#ef4444'}">${item.status}</span>
-          </p>
-        </div>
-      </div>
-    `;
-  }).join('');
-  
-  recentActivityDiv.innerHTML = html;
-}
+
 
 // Load Deposits Function
 async function loadDeposits() {

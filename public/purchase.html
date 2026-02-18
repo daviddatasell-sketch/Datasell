@@ -1366,27 +1366,8 @@
                 let allocatedOrderId = null;
                 if (selectedNetwork && selectedNetwork.toLowerCase() === 'at') {
                     console.log('📵 Skipping Order ID allocation for AT package (out of stock)');
-                } else {
-                    // Allocate Order ID first
-                    console.log('📊 Allocating Order ID...');
-                    const orderIdResponse = await fetch('/api/allocate-order-id', {
-                        credentials: 'include',
-                        method: 'POST',
-                        headers: {
-                            'Content-Type': 'application/json'
-                        }
-                    });
-
-                    const orderIdData = await orderIdResponse.json();
-                    if (!orderIdData.success || !orderIdData.orderId) {
-                        console.error('❌ Failed to allocate Order ID');
-                        notyf.error('Failed to allocate Order ID. Please try again.');
-                        return;
-                    }
-
-                    allocatedOrderId = orderIdData.orderId;
-                    console.log(`✅ Order ID allocated: ${allocatedOrderId}`);
                 }
+                // NOTE: For MTN, we will allocate Order ID AFTER purchase succeeds
 
                 const response = await fetch('/api/purchase-data', {
                     credentials: 'include',
@@ -1400,7 +1381,7 @@
                         phoneNumber: phoneNumber,
                         amount: selectedPackage.price,
                         packageName: selectedPackage.name,
-                        orderId: allocatedOrderId
+                        orderId: null  // Don't send Order ID yet, server will allocate after success
                     })
                 });
 
