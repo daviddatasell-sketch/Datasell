@@ -172,6 +172,10 @@ const WIGAL_SMS_USERNAME = 'Datasell';
 const WIGAL_SMS_SENDER = 'Datasellgh';
 
 async function sendSmsToUser(userId, phoneFallback, message) {
+  // SMS INTEGRATION DISABLED - Will be enabled when requested
+  console.log('📱 [SMS DISABLED] SMS sending is currently disabled for user', userId);
+  return;
+
   try {
     const userSnap = await admin.database().ref(`users/${userId}`).once('value');
     const user = userSnap.val() || {};
