@@ -1131,10 +1131,14 @@
 
         // Initialize network selection
         function initializeNetwork() {
-            if (networkParam && ['mtn', 'at'].includes(networkParam)) {
+            if (networkParam && ['mtn', 'at', 'tc'].includes(networkParam)) {
                 selectedNetwork = networkParam;
-                const networkName = networkParam === 'mtn' ? 'MTN' : 'AirtelTigo';
-                document.getElementById('networkName').textContent = networkName;
+                const networkMap = {
+                    'mtn': 'MTN',
+                    'at': 'AirtelTigo',
+                    'tc': 'Telecel'
+                };
+                document.getElementById('networkName').textContent = networkMap[networkParam];
             } else {
                 // Default to MTN if no valid network in URL
                 selectedNetwork = 'mtn';
@@ -1205,8 +1209,18 @@
                 }
 
                 // Get network logo
-                const networkLogo = selectedNetwork === 'mtn' ? '/images/mtn-logo.png' : '/images/airteltigo-logo.png';
-                const networkLabel = selectedNetwork === 'mtn' ? 'MTN' : 'AT';
+                const networkLogoMap = {
+                    'mtn': '/images/mtn-logo.png',
+                    'at': '/images/airteltigo-logo.png',
+                    'tc': '/images/telecel-logo.png'
+                };
+                const networkLabelMap = {
+                    'mtn': 'MTN',
+                    'at': 'AT',
+                    'tc': 'Telecel'
+                };
+                const networkLogo = networkLogoMap[selectedNetwork];
+                const networkLabel = networkLabelMap[selectedNetwork];
 
                 // Check if AirtelTigo is out of stock
                 if (selectedNetwork === 'at') {

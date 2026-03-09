@@ -662,6 +662,14 @@ body {
                         </div>
                     </div>
                     <div class="col-6">
+                        <div class="network-card" data-network="tc" onclick="selectNetwork('tc')">
+                            <div class="network-logo">
+                                <img src="/images/telecel-logo.png" alt="Telecel" style="height: 40px; width: auto; max-width: 80px;">
+                            </div>
+                            <div class="network-name">Telecel</div>
+                        </div>
+                    </div>
+                    <div class="col-6">
                         <div class="network-card active" data-network="mtn" onclick="selectNetwork('mtn')">
                             <div class="network-logo">
                                 <img src="/images/mtn-logo.png" alt="MTN" style="height: 40px; width: auto; max-width: 80px;">

@@ -272,6 +272,7 @@ function initializePackageCache() {
     try {
       const mtnRef = admin.database().ref('packages/mtn');
       const atRef = admin.database().ref('packages/at');
+      const tcRef = admin.database().ref('packages/tc');
       
       mtnRef.on('value', (snapshot) => {
         try {
@@ -309,6 +310,25 @@ function initializePackageCache() {
         }
       }, (error) => {
         console.error('⚠️  AirtelTigo packages listener warning:', error.message);
+      });
+      
+      tcRef.on('value', (snapshot) => {
+        try {
+          const packages = snapshot.val() || {};
+          const packagesArray = Object.entries(packages).map(([key, pkg]) => ({
+            id: key,
+            ...pkg
+          }));
+          
+          packageCache.tc = packagesArray;
+          packageCache.lastUpdated = Date.now();
+          packageCache.isInitialized = true;
+          console.log(`✅ Telecel packages cache updated (${packagesArray.length} packages)`);
+        } catch (error) {
+          console.error('❌ Error updating Telecel packages cache:', error);
+        }
+      }, (error) => {
+        console.error('⚠️  Telecel packages listener warning:', error.message);
       });
     } catch (error) {
       console.error('⚠️  Package cache initialization warning:', error.message);
