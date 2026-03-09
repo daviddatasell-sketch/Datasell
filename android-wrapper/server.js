@@ -1464,7 +1464,7 @@ app.get('/api/packages/:network', requireAuth, async (req, res) => {
   try {
     const { network } = req.params;
     
-    if (!['mtn', 'at'].includes(network)) {
+    if (!['mtn', 'at', 'tc'].includes(network)) {
       return res.status(400).json({ 
         success: false, 
         error: 'Invalid network' 
