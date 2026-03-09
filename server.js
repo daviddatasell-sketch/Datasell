@@ -23,7 +23,8 @@ const requiredEnvVars = [
   'FIREBASE_PRIVATE_KEY',
   'FIREBASE_CLIENT_EMAIL',
   'FIREBASE_CLIENT_ID',
-  'FIREBASE_CLIENT_CERT_URL'
+  'FIREBASE_CLIENT_CERT_URL',
+  'DATAHUB_API_KEY'
 ];
 
 console.log('🔍 Checking environment variables...');
@@ -52,6 +53,7 @@ const apiRoutes = require('./api/routes');
 const userAPIRoutes = require('./api/user-routes');
 const { validatePhoneSignup, validatePhoneOrder, logBlockedPhoneAttempt } = require('./phone-blocking-system');
 const { validateGhanianPhone, toInternationalFormat } = require('./ghana-phone-validator');
+const { shouldUseDataHub, shouldUseDataMart, mapNetworkToDataHub, purchaseViaDataHub, parseDataHubWebhook } = require('./datahub-integration');
 // rate limiting removed per request
 
 const app = express();
@@ -3809,6 +3811,126 @@ app.post('/api/datamart-webhook', async (req, res) => {
 });
 
 // ============================================
+// DATAHUB WEBHOOK - Handles AT and Telecel orders
+// ============================================
+app.post('/api/datahub-webhook', async (req, res) => {
+  try {
+    const payload = req.body;
+    const timestamp = new Date().toISOString();
+
+    console.log(`📩 [DATAHUB-WEBHOOK] Webhook received at ${timestamp}`);
+    console.log(`📩 [DATAHUB-WEBHOOK] Payload:`, JSON.stringify(payload, null, 2));
+
+    // Parse the webhook payload
+    const parsedWebhook = parseDataHubWebhook(payload);
+    const { orderNumber, status, network, recipient, capacity } = parsedWebhook;
+
+    if (!orderNumber || !status) {
+      console.warn(`⚠️ [DATAHUB-WEBHOOK] Missing orderNumber or status`);
+      return res.status(400).json({ error: 'Missing orderNumber or status' });
+    }
+
+    console.log(`📊 [DATAHUB-WEBHOOK] Processing order: ${orderNumber}, status: ${status}`);
+
+    // Find transaction by DataHub order number
+    const transactionsRef = admin.database().ref('transactions');
+    const snapshot = await transactionsRef.orderByChild('datahubOrderNumber').equalTo(orderNumber).once('value');
+
+    if (!snapshot.exists()) {
+      console.warn(`⚠️ [DATAHUB-WEBHOOK] Transaction not found for order: ${orderNumber}`);
+      return res.status(404).json({ error: 'Transaction not found' });
+    }
+
+    let transactionKey = null;
+    let transaction = null;
+    snapshot.forEach(child => {
+      transactionKey = child.key;
+      transaction = child.val();
+    });
+
+    console.log(`📝 [DATAHUB-WEBHOOK] Found transaction: ${transactionKey}`);
+
+    // Handle different order statuses
+    if (status === 'successful') {
+      console.log(`✅ [DATAHUB-WEBHOOK] Order successful: ${orderNumber}`);
+
+      await admin.database().ref(`transactions/${transactionKey}`).update({
+        status: 'delivered',
+        datahubStatus: 'successful',
+        lastSyncedAt: timestamp
+      });
+
+      console.log(`✅ [DATAHUB-WEBHOOK] Updated ${transactionKey} to delivered`);
+
+      try {
+        const msg = `✅ Your data order has been delivered successfully! Enjoy your ${capacity}GB of data on ${network}.`;
+        await sendSmsToUser(transaction.userId, recipient || transaction.phoneNumber, msg);
+        console.log(`📱 [DATAHUB-WEBHOOK] Success SMS sent`);
+      } catch (smsErr) {
+        console.error(`⚠️ [DATAHUB-WEBHOOK] SMS failed:`, smsErr.message);
+      }
+
+      return res.status(200).json({ received: true, orderNumber, status, timestamp });
+
+    } else if (status === 'failed') {
+      console.log(`❌ [DATAHUB-WEBHOOK] Order failed: ${orderNumber}`);
+
+      await admin.database().ref(`transactions/${transactionKey}`).update({
+        status: 'failed',
+        datahubStatus: 'failed',
+        lastSyncedAt: timestamp
+      });
+
+      console.log(`❌ [DATAHUB-WEBHOOK] Updated ${transactionKey} to failed`);
+
+      // Refund the user
+      try {
+        const amount = transaction.amount;
+        const userId = transaction.userId;
+        const userRef = admin.database().ref(`users/${userId}`);
+        const userSnapshot = await userRef.once('value');
+        const userData = userSnapshot.val();
+        const newBalance = (userData.walletBalance || 0) + amount;
+        await userRef.update({ walletBalance: newBalance });
+        console.log(`💰 [DATAHUB-WEBHOOK] Refunded ₵${amount}`);
+      } catch (refundErr) {
+        console.error(`⚠️ [DATAHUB-WEBHOOK] Refund failed:`, refundErr.message);
+      }
+
+      try {
+        const msg = `❌ Your data order failed. Your wallet has been refunded. Contact support: datasellgh@gmail.com`;
+        await sendSmsToUser(transaction.userId, recipient || transaction.phoneNumber, msg);
+        console.log(`📱 [DATAHUB-WEBHOOK] Failure notification sent`);
+      } catch (smsErr) {
+        console.error(`⚠️ [DATAHUB-WEBHOOK] SMS failed:`, smsErr.message);
+      }
+
+      return res.status(200).json({ received: true, orderNumber, status, timestamp });
+
+    } else if (status === 'pending' || status === 'processing') {
+      console.log(`⏳ [DATAHUB-WEBHOOK] Order processing: ${orderNumber}`);
+
+      await admin.database().ref(`transactions/${transactionKey}`).update({
+        datahubStatus: status,
+        lastSyncedAt: timestamp
+      });
+
+      return res.status(200).json({ received: true, orderNumber, status, timestamp });
+
+    } else {
+      console.warn(`⚠️ [DATAHUB-WEBHOOK] Unknown status: ${status}`);
+      return res.status(200).json({ received: true, orderNumber, status, timestamp });
+    }
+
+  } catch (error) {
+    console.error(`❌ [DATAHUB-WEBHOOK] Error:`, error.message);
+    console.error(`❌ [DATAHUB-WEBHOOK] Full error:`, error);
+    console.error(`❌ [DATAHUB-WEBHOOK] Request body:`, req.body);
+    return res.status(200).json({ received: true, error: error.message });
+  }
+});
+
+// ============================================
 // MANUAL PAYMENT VERIFICATION ENDPOINT
 // Allows users to manually verify/claim their payment if webhook failed
 // ============================================
@@ -4191,15 +4313,6 @@ app.post('/api/purchase-data', requireAuth, async (req, res) => {
     
     console.log('🔄 Purchase request received:', { network, volume, phoneNumber, amount, packageName, orderId });
 
-    // 🚫 REJECT AIRTELTIGO PURCHASES - CURRENTLY OUT OF STOCK
-    if (network && network.toLowerCase() === 'at') {
-      console.warn(`⚠️ Attempt to purchase AT package by user ${userId} - currently out of stock`);
-      return res.status(403).json({ 
-        success: false, 
-        error: 'Airteltigo packages are currently out of stock. Please try MTN instead.' 
-      });
-    }
-
     // Validation
     if (!network || !volume || !phoneNumber || !amount || !packageName) {
       return res.status(400).json({ 
@@ -4319,211 +4432,264 @@ app.post('/api/purchase-data', requireAuth, async (req, res) => {
     });
 
     // Notify user that payment/order is received and processing
-    // 🚫 SKIP SMS FOR AIRTELTIGO PACKAGES
-    if (network && network.toLowerCase() !== 'at') {
-      try {
-        const notifyMsg = `Order received. Your ${packageName} will be delivered to ${phoneNumber} within 1 to 30 minutes. If any troubles contact support on datasellgh@gmail.com`;
-        await sendSmsToUser(userId, phoneNumber, notifyMsg);
-        console.log('📩 Order-created SMS sent for transaction', transactionId);
-      } catch (smsErr) {
-        console.error('❌ Failed to send order-created SMS for', transactionId, smsErr);
-      }
-    } else {
-      console.log('📵 SMS skipped for AT (Airteltigo) package');
+    try {
+      const notifyMsg = `Order received. Your ${packageName} will be delivered to ${phoneNumber} within 1 to 30 minutes. If any troubles contact support on datasellgh@gmail.com`;
+      await sendSmsToUser(userId, phoneNumber, notifyMsg);
+      console.log('📩 Order-created SMS sent for transaction', transactionId);
+    } catch (smsErr) {
+      console.error('❌ Failed to send order-created SMS for', transactionId, smsErr);
     }
 
-    // Map network to DataMart format
-    const datamartNetwork = mapNetworkToDataMart(network);
-    
-    // DataMart API call
-    const datamartResponse = await axios.post(
-      'https://api.datamartgh.shop/api/developer/purchase',
-      {
-        phoneNumber: phoneNumber,
-        network: datamartNetwork,
-        capacity: capacityGB,
-        gateway: 'wallet'
-      },
-      {
-        headers: {
-          'X-API-Key': process.env.DATAMART_API_KEY,
-          'Content-Type': 'application/json'
-        },
-        timeout: 30000
-      }
-    );
+    // ============================================
+    // ROUTE TO APPROPRIATE PROVIDER
+    // ============================================
+    let providerResponse = null;
+    let useDataHub = shouldUseDataHub(network);
+    let useDataMart = shouldUseDataMart(network);
 
-    const datamartData = datamartResponse.data;
-    console.log('📡 DataMart response:', datamartData);
-    console.log('📡 DataMart response full:', JSON.stringify(datamartData, null, 2));
-
-    // Handle DataMart response structure
-    if (datamartData.status === 'success' && datamartData.data) {
-      // SUCCESS: Deduct balance (using discounted amount) and update order
-      const newBalance = userData.walletBalance - finalAmount;
-      await userRef.update({ walletBalance: newBalance });
-
-      // 📊 ALLOCATE ORDER ID ONLY FOR SUCCESSFUL PURCHASES
-      let allocatedOrderId = null;
-      if (network && network.toLowerCase() !== 'at') {
-        try {
-          const counterRef = admin.database().ref('system/orderIdCounter');
-          const result = await counterRef.transaction(currentValue => {
-            const newValue = (currentValue || 110000) + 1;
-            return newValue;
-          });
-          if (result.committed) {
-            allocatedOrderId = result.snapshot.val();
-            console.log(`✅ Order ID allocated for successful purchase: ${allocatedOrderId}`);
-          } else {
-            console.error('❌ Failed to allocate Order ID');
-          }
-        } catch (err) {
-          console.error('❌ Error allocating Order ID:', err);
-        }
-      }
-
-      const purchaseData = datamartData.data;
-      await transactionRef.update({
-        status: 'processing',
-        orderId: allocatedOrderId, // Set Order ID only for successful purchases
-        transactionId: purchaseData.purchaseId || purchaseData.transactionReference,
-        datamartTransactionId: purchaseData.purchaseId || purchaseData.transactionReference,
-        datamartResponse: purchaseData
-      });
-
-      console.log('✅ Purchase successful, order updated to success:', {
-        reference: reference,
-        transactionId: purchaseData.purchaseId || purchaseData.transactionReference,
-        orderId: allocatedOrderId,
-        newBalance: newBalance,
-        originalAmount: amount,
-        discountApplied: discountAmount.toFixed(2),
-        paidAmount: finalAmount.toFixed(2)
-      });
-
-      res.json({ 
-        success: true, 
-        data: purchaseData,
-        orderId: allocatedOrderId, // Include the Order ID in response
-        newBalance: newBalance,
-        reference: reference,
-        message: 'Data purchase successful!',
-        pricingInfo: {
-          userTier: userTier,
-          originalPrice: amount,
-          discountPercent: discountPercent,
-          discountAmount: discountAmount.toFixed(2),
-          paidAmount: finalAmount.toFixed(2)
-        }
-      });
-    } else {
-      // FAILURE: Update order status but DON'T deduct balance
-      // 🚫 DON'T ALLOCATE ORDER ID FOR FAILED PURCHASES
-      await transactionRef.update({
-        status: 'failed',
-        orderId: null,  // Explicitly set Order ID to null for failed purchases
-        datamartResponse: datamartData,
-        reason: datamartData.message || 'Purchase failed'
-      });
-
-      console.log('❌ Purchase failed, order updated to failed - NO ORDER ID ALLOCATED');
-
-      // Check if it's a provider balance issue or stock issue
-      const isOutOfStock = isProviderBalanceError(datamartData);
-      const isStockOut = isStockOutError(datamartData);
-      console.log('🔍 Balance error check:', { isOutOfStock, isStockOut, datamartData });
+    if (useDataHub) {
+      // ============================================
+      // DATAHUB API CALL (AT and Telecel)
+      // ============================================
+      console.log(`📡 [DATAHUB] Processing ${network.toUpperCase()} purchase for ${packageName}...`);
       
-      // Determine error message based on network and error type
-      let errorMessage;
-      if (network === 'at' || network === 'airteltigo') {
-        // For AirtelTigo, if it's a stock issue, show "Out of Stock"
-        if (isStockOut) {
-          errorMessage = 'Out of Stock';
-        } else if (isOutOfStock) {
-          errorMessage = 'Out of Stock';
+      const datahubNetworkKey = mapNetworkToDataHub(network);
+      
+      try {
+        providerResponse = await purchaseViaDataHub({
+          networkKey: datahubNetworkKey,
+          recipient: phoneNumber,
+          capacity: capacityGB
+        });
+
+        console.log('📡 DataHub response:', providerResponse);
+        console.log('📡 DataHub response full:', JSON.stringify(providerResponse, null, 2));
+
+        // Handle DataHub response
+        if (providerResponse.success) {
+          // SUCCESS: Process like DataMart success
+          const newBalance = userData.walletBalance - finalAmount;
+          await userRef.update({ walletBalance: newBalance });
+
+          let allocatedOrderId = null;
+          try {
+            const counterRef = admin.database().ref('system/orderIdCounter');
+            const result = await counterRef.transaction(currentValue => {
+              const newValue = (currentValue || 110000) + 1;
+              return newValue;
+            });
+            if (result.committed) {
+              allocatedOrderId = result.snapshot.val();
+              console.log(`✅ Order ID allocated for successful purchase: ${allocatedOrderId}`);
+            }
+          } catch (err) {
+            console.error('❌ Error allocating Order ID:', err);
+          }
+
+          const orderNumber = providerResponse.data?.orderNumber || providerResponse.orderNumber;
+          await transactionRef.update({
+            status: 'processing',
+            orderId: allocatedOrderId,
+            transactionId: orderNumber,
+            datahubOrderNumber: orderNumber,
+            datahubResponse: providerResponse.data || providerResponse
+          });
+
+          console.log('✅ DataHub purchase successful:', {
+            reference: reference,
+            orderNumber: orderNumber,
+            orderId: allocatedOrderId,
+            newBalance: newBalance
+          });
+
+          res.json({
+            success: true,
+            data: providerResponse.data || providerResponse,
+            orderId: allocatedOrderId,
+            newBalance: newBalance,
+            reference: reference,
+            message: 'Data purchase successful!',
+            provider: 'datahub',
+            pricingInfo: {
+              userTier: userTier,
+              originalPrice: amount,
+              discountPercent: discountPercent,
+              discountAmount: discountAmount.toFixed(2),
+              paidAmount: finalAmount.toFixed(2)
+            }
+          });
         } else {
-          errorMessage = datamartData.message || 'Purchase failed';
+          // FAILURE: Update order status but don't deduct balance
+          await transactionRef.update({
+            status: 'failed',
+            orderId: null,
+            datahubResponse: providerResponse,
+            reason: providerResponse.message || 'Purchase failed'
+          });
+
+          console.log('❌ DataHub purchase failed');
+
+          res.status(400).json({
+            success: false,
+            error: providerResponse.message || 'Purchase failed via DataHub',
+            provider: 'datahub'
+          });
         }
-      } else {
-        // For other networks (MTN), show balance issue if detected
-        errorMessage = isOutOfStock ? 'Out of Stock - Please try again later' : (datamartData.message || 'Purchase failed');
+      } catch (datahubError) {
+        console.error('❌ DataHub API error:', datahubError.message);
+
+        await transactionRef.update({
+          status: 'failed',
+          datahubResponse: datahubError.response?.data || { error: datahubError.message },
+          reason: datahubError.response?.data?.message || datahubError.message
+        });
+
+        res.status(400).json({
+          success: false,
+          error: datahubError.response?.data?.message || 'DataHub service error. Please try again.',
+          provider: 'datahub',
+          details: datahubError.response?.data
+        });
       }
 
-      res.status(400).json({ 
-        success: false, 
-        error: errorMessage,
-        isOutOfStock: isOutOfStock
+    } else if (useDataMart) {
+      // ============================================
+      // DATAMART API CALL (MTN only)
+      // ============================================
+      console.log(`📡 [DATAMART] Processing ${network.toUpperCase()} purchase for ${packageName}...`);
+      
+      const datamartNetwork = mapNetworkToDataMart(network);
+      
+      try {
+        const datamartResponse = await axios.post(
+          'https://api.datamartgh.shop/api/developer/purchase',
+          {
+            phoneNumber: phoneNumber,
+            network: datamartNetwork,
+            capacity: capacityGB,
+            gateway: 'wallet'
+          },
+          {
+            headers: {
+              'X-API-Key': process.env.DATAMART_API_KEY,
+              'Content-Type': 'application/json'
+            },
+            timeout: 30000
+          }
+        );
+
+        const datamartData = datamartResponse.data;
+        console.log('📡 DataMart response:', datamartData);
+        console.log('📡 DataMart response full:', JSON.stringify(datamartData, null, 2));
+
+        // Handle DataMart response structure
+        if (datamartData.status === 'success' && datamartData.data) {
+          // SUCCESS: Deduct balance (using discounted amount) and update order
+          const newBalance = userData.walletBalance - finalAmount;
+          await userRef.update({ walletBalance: newBalance });
+
+          // 📊 ALLOCATE ORDER ID ONLY FOR SUCCESSFUL PURCHASES
+          let allocatedOrderId = null;
+          try {
+            const counterRef = admin.database().ref('system/orderIdCounter');
+            const result = await counterRef.transaction(currentValue => {
+              const newValue = (currentValue || 110000) + 1;
+              return newValue;
+            });
+            if (result.committed) {
+              allocatedOrderId = result.snapshot.val();
+              console.log(`✅ Order ID allocated for successful purchase: ${allocatedOrderId}`);
+            } else {
+              console.error('❌ Failed to allocate Order ID');
+            }
+          } catch (err) {
+            console.error('❌ Error allocating Order ID:', err);
+          }
+
+          const purchaseData = datamartData.data;
+          await transactionRef.update({
+            status: 'processing',
+            orderId: allocatedOrderId,
+            transactionId: purchaseData.purchaseId || purchaseData.transactionReference,
+            datamartTransactionId: purchaseData.purchaseId || purchaseData.transactionReference,
+            datamartResponse: purchaseData
+          });
+
+          console.log('✅ DataMart purchase successful:', {
+            reference: reference,
+            transactionId: purchaseData.purchaseId || purchaseData.transactionReference,
+            orderId: allocatedOrderId,
+            newBalance: newBalance
+          });
+
+          res.json({
+            success: true,
+            data: purchaseData,
+            orderId: allocatedOrderId,
+            newBalance: newBalance,
+            reference: reference,
+            message: 'Data purchase successful!',
+            provider: 'datamart',
+            pricingInfo: {
+              userTier: userTier,
+              originalPrice: amount,
+              discountPercent: discountPercent,
+              discountAmount: discountAmount.toFixed(2),
+              paidAmount: finalAmount.toFixed(2)
+            }
+          });
+        } else {
+          // FAILURE: Update order status but DON'T deduct balance
+          await transactionRef.update({
+            status: 'failed',
+            orderId: null,
+            datamartResponse: datamartData,
+            reason: datamartData.message || 'Purchase failed'
+          });
+
+          console.log('❌ DataMart purchase failed');
+
+          const isOutOfStock = isProviderBalanceError(datamartData);
+          let errorMessage = isOutOfStock ? 'Out of Stock - Please try again later' : (datamartData.message || 'Purchase failed');
+
+          res.status(400).json({
+            success: false,
+            error: errorMessage,
+            isOutOfStock: isOutOfStock,
+            provider: 'datamart'
+          });
+        }
+      } catch (datamartError) {
+        console.error('❌ DataMart API error:', datamartError.message);
+
+        await transactionRef.update({
+          status: 'failed',
+          datamartResponse: datamartError.response?.data || { error: datamartError.message },
+          reason: datamartError.response?.data?.message || datamartError.message
+        });
+
+        const isOutOfStock = datamartError.response?.data ? isProviderBalanceError(datamartError.response.data) : false;
+        let errorMessage = isOutOfStock ? 'Service temporarily unavailable. Please try again later.' : 'DataMart service error. Please try again.';
+
+        res.status(400).json({
+          success: false,
+          error: errorMessage,
+          isOutOfStock: isOutOfStock,
+          provider: 'datamart',
+          details: datamartError.response?.data
+        });
+      }
+
+    } else {
+      // Invalid network - neither DataHub nor DataMart
+      res.status(400).json({
+        success: false,
+        error: `Unsupported network: ${network}`
       });
     }
 
   } catch (error) {
     console.error('❌ Purchase error:', error);
-    
-    // Check if it's an Axios error with response data (e.g., 400 from DataMart)
-    if (error.response && error.response.data) {
-      const datamartErrorData = error.response.data;
-      console.log('📡 DataMart error response:', datamartErrorData);
-      
-      if (transactionRef) {
-        await transactionRef.update({
-          status: 'failed',
-          datamartResponse: datamartErrorData,
-          reason: datamartErrorData.message || 'DataMart error'
-        });
-      }
-      
-      // Check if it's a provider balance issue
-      const isOutOfStock = isProviderBalanceError(datamartErrorData);
-      const isStockOut = isStockOutError(datamartErrorData);
-      console.log('🔍 Balance error check (from catch):', { isOutOfStock, isStockOut, datamartErrorData });
-      
-      // Provide clearer error messages based on network type
-      let errorMessage;
-      if (network === 'at' || network === 'airteltigo') {
-        // For AirtelTigo, prioritize showing "Out of Stock"
-        if (isStockOut) {
-          errorMessage = 'Out of Stock';
-        } else if (isOutOfStock) {
-          // Check if it's specifically insufficient balance
-          if (datamartErrorData.message?.toLowerCase().includes('insufficient wallet balance') || 
-              datamartErrorData.message?.toLowerCase().includes('insufficient balance')) {
-            errorMessage = 'Out of Stock';
-          } else {
-            errorMessage = 'Out of Stock';
-          }
-        } else {
-          errorMessage = datamartErrorData.message || 'Purchase failed';
-        }
-      } else {
-        // For other networks (MTN), show provider balance issue if detected
-        if (isOutOfStock) {
-          // Check if it's specifically a provider wallet balance issue
-          if (datamartErrorData.message?.toLowerCase().includes('insufficient wallet balance') || 
-              datamartErrorData.message?.toLowerCase().includes('insufficient balance')) {
-            errorMessage = 'Service temporarily unavailable - Provider balance issue. Please try again later or contact support.';
-          } else {
-            errorMessage = 'Out of Stock - Please try again later';
-          }
-        } else {
-          errorMessage = datamartErrorData.message || 'Purchase failed';
-        }
-      }
-      
-      return res.status(400).json({ 
-        success: false, 
-        error: errorMessage,
-        isOutOfStock: isOutOfStock,
-        details: process.env.NODE_ENV !== 'production' ? datamartErrorData : undefined
-      });
-    }
-    
-    // Handle other errors
-    if (transactionRef) {
-      await transactionRef.update({
-        status: 'failed',
-        datamartResponse: { error: error.message },
-        reason: 'System error: ' + error.message
       });
     }
     
