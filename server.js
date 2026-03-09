@@ -4475,7 +4475,7 @@ app.post('/api/purchase-data', requireAuth, async (req, res) => {
       console.log('📡 DataHub response full:', JSON.stringify(providerResponse, null, 2));
 
       // Handle DataHub response
-      if (providerResponse.success) {
+      if (providerResponse && providerResponse.success) {
         // SUCCESS: Process like DataMart success
         const newBalance = userData.walletBalance - finalAmount;
         await userRef.update({ walletBalance: newBalance });
@@ -4495,14 +4495,38 @@ app.post('/api/purchase-data', requireAuth, async (req, res) => {
           console.error('❌ Error allocating Order ID:', err);
         }
 
-        const orderNumber = providerResponse.data?.orderNumber || providerResponse.data?.order_number || providerResponse.orderNumber;
-        await transactionRef.update({
-          status: 'processing',
-          orderId: allocatedOrderId,
-          transactionId: orderNumber,
-          datahubOrderNumber: orderNumber,
-          datahubResponse: providerResponse.data || providerResponse
-        });
+        const orderNumber = providerResponse.data?.data?.reference || providerResponse.data?.orderNumber || providerResponse.data?.order_number || providerResponse.orderNumber;
+        
+        console.log('📊 [DATAHUB] Extracted order number:', orderNumber);
+        
+        if (!orderNumber) {
+          console.error('❌ Failed to extract order number from DataHub response');
+          await transactionRef.update({
+            status: 'failed',
+            orderId: allocatedOrderId,
+            reason: 'Failed to extract order number from provider'
+          });
+          
+          return res.status(500).json({
+            success: false,
+            error: 'Failed to process order - missing order number',
+            provider: 'datahub'
+          });
+        }
+        
+        try {
+          await transactionRef.update({
+            status: 'processing',
+            orderId: allocatedOrderId,
+            transactionId: orderNumber,
+            datahubOrderNumber: orderNumber,
+            datahubStatus: 'processing',
+            datahubResponse: providerResponse.data || providerResponse
+          });
+          console.log('✅ Transaction updated successfully');
+        } catch (updateErr) {
+          console.error('❌ Error updating transaction:', updateErr);
+        }
 
         console.log('✅ DataHub purchase successful:', {
           reference: reference,
@@ -4682,16 +4706,22 @@ app.post('/api/purchase-data', requireAuth, async (req, res) => {
     }
 
   } catch (error) {
-    console.error('❌ Purchase error:', error);
+    console.error('❌ Purchase endpoint error:', error);
+    console.error('❌ Error stack:', error.stack);
+    console.error('❌ Error message:', error.message);
+    console.error('❌ Error code:', error.code);
     
     let errorMessage = 'Purchase failed';
     if (error.code === 'ECONNABORTED') {
       errorMessage = 'Request timeout. Please check your connection and try again.';
     }
     
+    // Return 500 with detailed error info for debugging
     res.status(500).json({ 
       success: false, 
-      error: errorMessage 
+      error: errorMessage,
+      details: error.message,
+      type: error.constructor.name
     });
   }
 });
