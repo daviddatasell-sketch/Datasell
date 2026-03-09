@@ -3819,15 +3819,25 @@ app.post('/api/datahub-webhook', async (req, res) => {
     const timestamp = new Date().toISOString();
 
     console.log(`📩 [DATAHUB-WEBHOOK] Webhook received at ${timestamp}`);
-    console.log(`📩 [DATAHUB-WEBHOOK] Payload:`, JSON.stringify(payload, null, 2));
+    console.log(`📩 [DATAHUB-WEBHOOK] Raw Payload:`, JSON.stringify(payload, null, 2));
 
     // Parse the webhook payload
     const parsedWebhook = parseDataHubWebhook(payload);
     const { orderNumber, status, network, recipient, capacity } = parsedWebhook;
 
-    if (!orderNumber || !status) {
-      console.warn(`⚠️ [DATAHUB-WEBHOOK] Missing orderNumber or status`);
-      return res.status(400).json({ error: 'Missing orderNumber or status' });
+    // For test webhooks, allow minimal data
+    if (!orderNumber) {
+      console.warn(`⚠️ [DATAHUB-WEBHOOK] Test webhook - Missing orderNumber, returning success`);
+      return res.status(200).json({ 
+        received: true, 
+        message: 'Test webhook received successfully',
+        timestamp: timestamp
+      });
+    }
+
+    if (!status) {
+      console.warn(`⚠️ [DATAHUB-WEBHOOK] Missing status for order: ${orderNumber}`);
+      return res.status(400).json({ error: 'Missing status field' });
     }
 
     console.log(`📊 [DATAHUB-WEBHOOK] Processing order: ${orderNumber}, status: ${status}`);

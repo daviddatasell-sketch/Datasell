@@ -164,16 +164,24 @@ function parseDataHubWebhook(webhookData) {
       throw new Error('No webhook data provided');
     }
 
+    console.log('📨 [DataHub] Raw webhook data received:', JSON.stringify(webhookData, null, 2));
+
+    // Support multiple possible field names for order number
+    const orderNumber = webhookData.orderNumber || webhookData.order_number || webhookData.orderId || webhookData.order?.id || webhookData.id;
+    
+    // Support multiple possible field names for status
+    const status = (webhookData.status || webhookData.order_status || webhookData.orderStatus || '')?.toLowerCase();
+
     // DataHub webhook structure based on API docs
     const parsed = {
-      orderNumber: webhookData.orderNumber,
-      status: webhookData.status?.toLowerCase(),
-      network: webhookData.network,
-      recipient: webhookData.recipient,
-      capacity: webhookData.capacity,
-      price: webhookData.price,
-      balance: webhookData.balance,
-      timestamp: webhookData.timestamp,
+      orderNumber: orderNumber,
+      status: status,
+      network: webhookData.network || webhookData.provider,
+      recipient: webhookData.recipient || webhookData.phoneNumber || webhookData.phone_number,
+      capacity: webhookData.capacity || webhookData.volume || webhookData.data_volume,
+      price: webhookData.price || webhookData.amount,
+      balance: webhookData.balance || webhookData.remaining_balance,
+      timestamp: webhookData.timestamp || new Date().toISOString(),
       rawData: webhookData
     };
 
