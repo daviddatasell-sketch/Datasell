@@ -104,7 +104,17 @@ async function purchaseViaDataHub(params) {
     );
 
     console.log('✅ [DataHub] Purchase response:', response.data);
-    return response.data;
+    
+    // Wrap response with success flag based on status code and data presence
+    const wrappedResponse = {
+      success: response.status === 200 || response.status === 201,
+      status: response.status,
+      data: response.data,
+      message: response.data?.message || 'Success'
+    };
+    
+    console.log('✅ [DataHub] Wrapped response:', wrappedResponse);
+    return wrappedResponse;
 
   } catch (error) {
     console.error('❌ [DataHub] Purchase error:', {
@@ -112,7 +122,13 @@ async function purchaseViaDataHub(params) {
       status: error.response?.status,
       data: error.response?.data
     });
-    throw error;
+    
+    return {
+      success: false,
+      status: error.response?.status || 500,
+      data: error.response?.data,
+      message: error.response?.data?.message || error.message
+    };
   }
 }
 

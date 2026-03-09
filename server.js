@@ -4465,100 +4465,83 @@ app.post('/api/purchase-data', requireAuth, async (req, res) => {
       
       const datahubNetworkKey = mapNetworkToDataHub(network);
       
-      try {
-        providerResponse = await purchaseViaDataHub({
-          networkKey: datahubNetworkKey,
-          recipient: phoneNumber,
-          capacity: capacityGB
+      providerResponse = await purchaseViaDataHub({
+        networkKey: datahubNetworkKey,
+        recipient: phoneNumber,
+        capacity: capacityGB
+      });
+
+      console.log('📡 DataHub response:', providerResponse);
+      console.log('📡 DataHub response full:', JSON.stringify(providerResponse, null, 2));
+
+      // Handle DataHub response
+      if (providerResponse.success) {
+        // SUCCESS: Process like DataMart success
+        const newBalance = userData.walletBalance - finalAmount;
+        await userRef.update({ walletBalance: newBalance });
+
+        let allocatedOrderId = null;
+        try {
+          const counterRef = admin.database().ref('system/orderIdCounter');
+          const result = await counterRef.transaction(currentValue => {
+            const newValue = (currentValue || 110000) + 1;
+            return newValue;
+          });
+          if (result.committed) {
+            allocatedOrderId = result.snapshot.val();
+            console.log(`✅ Order ID allocated for successful purchase: ${allocatedOrderId}`);
+          }
+        } catch (err) {
+          console.error('❌ Error allocating Order ID:', err);
+        }
+
+        const orderNumber = providerResponse.data?.orderNumber || providerResponse.data?.order_number || providerResponse.orderNumber;
+        await transactionRef.update({
+          status: 'processing',
+          orderId: allocatedOrderId,
+          transactionId: orderNumber,
+          datahubOrderNumber: orderNumber,
+          datahubResponse: providerResponse.data || providerResponse
         });
 
-        console.log('📡 DataHub response:', providerResponse);
-        console.log('📡 DataHub response full:', JSON.stringify(providerResponse, null, 2));
+        console.log('✅ DataHub purchase successful:', {
+          reference: reference,
+          orderNumber: orderNumber,
+          orderId: allocatedOrderId,
+          newBalance: newBalance
+        });
 
-        // Handle DataHub response
-        if (providerResponse.success) {
-          // SUCCESS: Process like DataMart success
-          const newBalance = userData.walletBalance - finalAmount;
-          await userRef.update({ walletBalance: newBalance });
-
-          let allocatedOrderId = null;
-          try {
-            const counterRef = admin.database().ref('system/orderIdCounter');
-            const result = await counterRef.transaction(currentValue => {
-              const newValue = (currentValue || 110000) + 1;
-              return newValue;
-            });
-            if (result.committed) {
-              allocatedOrderId = result.snapshot.val();
-              console.log(`✅ Order ID allocated for successful purchase: ${allocatedOrderId}`);
-            }
-          } catch (err) {
-            console.error('❌ Error allocating Order ID:', err);
+        res.json({
+          success: true,
+          data: providerResponse.data || providerResponse,
+          orderId: allocatedOrderId,
+          newBalance: newBalance,
+          reference: reference,
+          message: 'Data purchase successful!',
+          provider: 'datahub',
+          pricingInfo: {
+            userTier: userTier,
+            originalPrice: amount,
+            discountPercent: discountPercent,
+            discountAmount: discountAmount.toFixed(2),
+            paidAmount: finalAmount.toFixed(2)
           }
-
-          const orderNumber = providerResponse.data?.orderNumber || providerResponse.orderNumber;
-          await transactionRef.update({
-            status: 'processing',
-            orderId: allocatedOrderId,
-            transactionId: orderNumber,
-            datahubOrderNumber: orderNumber,
-            datahubResponse: providerResponse.data || providerResponse
-          });
-
-          console.log('✅ DataHub purchase successful:', {
-            reference: reference,
-            orderNumber: orderNumber,
-            orderId: allocatedOrderId,
-            newBalance: newBalance
-          });
-
-          res.json({
-            success: true,
-            data: providerResponse.data || providerResponse,
-            orderId: allocatedOrderId,
-            newBalance: newBalance,
-            reference: reference,
-            message: 'Data purchase successful!',
-            provider: 'datahub',
-            pricingInfo: {
-              userTier: userTier,
-              originalPrice: amount,
-              discountPercent: discountPercent,
-              discountAmount: discountAmount.toFixed(2),
-              paidAmount: finalAmount.toFixed(2)
-            }
-          });
-        } else {
-          // FAILURE: Update order status but don't deduct balance
-          await transactionRef.update({
-            status: 'failed',
-            orderId: null,
-            datahubResponse: providerResponse,
-            reason: providerResponse.message || 'Purchase failed'
-          });
-
-          console.log('❌ DataHub purchase failed');
-
-          res.status(400).json({
-            success: false,
-            error: providerResponse.message || 'Purchase failed via DataHub',
-            provider: 'datahub'
-          });
-        }
-      } catch (datahubError) {
-        console.error('❌ DataHub API error:', datahubError.message);
-
+        });
+      } else {
+        // FAILURE: Update order status but don't deduct balance
         await transactionRef.update({
           status: 'failed',
-          datahubResponse: datahubError.response?.data || { error: datahubError.message },
-          reason: datahubError.response?.data?.message || datahubError.message
+          orderId: null,
+          datahubResponse: providerResponse,
+          reason: providerResponse.message || 'Purchase failed'
         });
+
+        console.log('❌ DataHub purchase failed:', providerResponse);
 
         res.status(400).json({
           success: false,
-          error: datahubError.response?.data?.message || 'DataHub service error. Please try again.',
-          provider: 'datahub',
-          details: datahubError.response?.data
+          error: providerResponse.message || 'DataHub service error. Please try again.',
+          provider: 'datahub'
         });
       }
 
