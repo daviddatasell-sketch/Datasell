@@ -1149,13 +1149,18 @@
         // Load data packages
         async function loadPackages() {
             try {
+                console.log(`📦 Loading packages for network: ${selectedNetwork}`);
                 const response = await fetch(`/api/packages/${selectedNetwork}`, { credentials: 'include' });
+                console.log(`📦 Fetch response status: ${response.status}`);
                 const result = await response.json();
+                console.log(`📦 Packages API response:`, result);
                 
                 if (result.success) {
                     packages = result.packages;
+                    console.log(`📦 Packages loaded successfully: ${packages.length} packages`);
                     displayPackages();
                 } else {
+                    console.error(`❌ API returned success=false: ${result.error}`);
                     throw new Error('Failed to load packages');
                 }
             } catch (error) {

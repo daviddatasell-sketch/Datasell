@@ -152,6 +152,7 @@ try {
 let packageCache = {
   mtn: [],
   at: [],
+  tc: [],
   lastUpdated: null,
   isInitialized: false
 };
