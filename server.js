@@ -4706,8 +4706,6 @@ app.post('/api/admin/packages/toggle-active', requireAdmin, async (req, res) => 
     await packageRef.update({ active: !currentStatus });
     const pkgName = packageSnapshot.val().name || 'Unknown';
     console.log(`✅ Status toggled: ${network}/${packageId} (${pkgName}) - now ${!currentStatus ? 'active' : 'inactive'}`);
-    const pkgName = packageSnapshot.val().name || 'Unknown';
-    console.log(`✅ Status toggled: ${network}/${packageId} (${pkgName}) - now ${!currentStatus ? 'active' : 'inactive'}`);
 
     // Update cache
     if (packageCache[network]) {
