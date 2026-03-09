@@ -4648,6 +4648,8 @@ app.post('/api/admin/packages/update-price', requireAdmin, async (req, res) => {
     await admin.database().ref(`packages/${network}/${packageKey}`).update({
       price: parseFloat(newPrice)
     });
+    console.log(`✅ Price updated: ${network}/${packageKey} (${packageName}) ₵${oldPrice} → ₵${newPrice}`);
+    console.log(`✅ Price updated: ${network}/${packageKey} (${packageName}) ₵${oldPrice} → ₵${newPrice}`);
 
     // Update cache
     if (packageCache[network]) {
@@ -4702,6 +4704,10 @@ app.post('/api/admin/packages/toggle-active', requireAdmin, async (req, res) => 
 
     const currentStatus = packageSnapshot.val().active !== false;
     await packageRef.update({ active: !currentStatus });
+    const pkgName = packageSnapshot.val().name || 'Unknown';
+    console.log(`✅ Status toggled: ${network}/${packageId} (${pkgName}) - now ${!currentStatus ? 'active' : 'inactive'}`);
+    const pkgName = packageSnapshot.val().name || 'Unknown';
+    console.log(`✅ Status toggled: ${network}/${packageId} (${pkgName}) - now ${!currentStatus ? 'active' : 'inactive'}`);
 
     // Update cache
     if (packageCache[network]) {
@@ -4757,10 +4763,14 @@ app.post('/api/admin/packages/create', requireAdmin, async (req, res) => {
     };
 
     await packageRef.set(payload);
+    console.log(`✅ Package created: ${network}/${id} (${name}) - ₵${price}`);
 
     // Update cache if present
     if (packageCache[network]) {
       packageCache[network].push({ id, ...payload });
+      console.log(`✅ Cache updated for ${network}: now ${packageCache[network].length} packages`);
+    } else {
+      console.warn(`⚠️  Cache not initialized for network: ${network}`);
     }
 
     // Log admin action
@@ -4805,10 +4815,13 @@ app.post('/api/admin/packages/delete', requireAdmin, async (req, res) => {
 
     // Delete the package
     await packageRef.remove();
+    console.log(`✅ Package deleted: ${network}/${packageId} (${packageName})`);
 
     // Update cache
     if (packageCache[network]) {
+      const count = packageCache[network].length;
       packageCache[network] = packageCache[network].filter(pkg => pkg.id !== packageId);
+      console.log(`✅ Cache updated for ${network}: ${count} → ${packageCache[network].length} packages`);
     }
 
     // Log admin action

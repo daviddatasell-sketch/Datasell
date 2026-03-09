@@ -2829,13 +2829,16 @@ function deletePackage(packageId, packageName, network) {
 
 // Add package function
 function addPackage() {
+  // Get the currently selected network for pre-selection
+  const currentNetwork = currentPackageNetwork || 'mtn';
+  
   Swal.fire({
     title: 'Add New Package',
     html: `
       <select id="pkgNetwork" class="swal2-input">
-        <option value="mtn">MTN</option>
-        <option value="at">AirtelTigo</option>
-        <option value="tc">Telecel</option>
+        <option value="mtn" ${currentNetwork === 'mtn' ? 'selected' : ''}>MTN</option>
+        <option value="at" ${currentNetwork === 'at' ? 'selected' : ''}>AirtelTigo</option>
+        <option value="tc" ${currentNetwork === 'tc' ? 'selected' : ''}>Telecel</option>
       </select>
       <input type="text" id="pkgId" placeholder="Package ID" class="swal2-input">
       <input type="text" id="pkgName" placeholder="Package Name" class="swal2-input">
