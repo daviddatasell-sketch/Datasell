@@ -4690,8 +4690,6 @@ app.post('/api/purchase-data', requireAuth, async (req, res) => {
 
   } catch (error) {
     console.error('❌ Purchase error:', error);
-      });
-    }
     
     let errorMessage = 'Purchase failed';
     if (error.code === 'ECONNABORTED') {
