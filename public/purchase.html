@@ -1227,27 +1227,6 @@
                 const networkLogo = networkLogoMap[selectedNetwork];
                 const networkLabel = networkLabelMap[selectedNetwork];
 
-                // Check if AirtelTigo is out of stock
-                if (selectedNetwork === 'at') {
-                    return `
-                    <div class="package-card" style="opacity: 0.6; cursor: not-allowed; pointer-events: none;">
-                        <div class="network-badge-small">
-                            <img src="${networkLogo}" alt="${networkLabel}" />
-                            <span>${networkLabel}</span>
-                        </div>
-                        <div class="package-gb">${volume}</div>
-                        <div class="package-price">₵${pkg.price.toFixed(2)}</div>
-                        <div class="package-validity">${pkg.validity || '30 days'}</div>
-                        <div style="margin-top: 1rem; padding: 0.75rem; background-color: #fee2e2; border-radius: 6px; text-align: center;">
-                            <button type="button" class="btn" style="background-color: #dc2626; color: white; border: none; width: 100%; padding: 0.5rem; border-radius: 4px; font-weight: 600; font-size: 0.85rem; cursor: not-allowed;" disabled>
-                                📦 Out of Stock
-                            </button>
-                            <p style="margin-top: 0.5rem; margin-bottom: 0; font-size: 0.75rem; color: #7f1d1d; font-weight: 500;">Airteltigo is currently out of stock, we are working hard to restock very soon</p>
-                        </div>
-                    </div>
-                    `;
-                }
-
                 return `
                 <div class="package-card" onclick="openPhoneModal('${pkg.id}', '${pkg.name}', ${pkg.price})">
                     <div class="network-badge-small">
