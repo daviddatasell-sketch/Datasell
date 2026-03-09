@@ -1389,6 +1389,7 @@
                 <div class="tabs" id="packagesTab">
                     <button class="tab active" data-network="mtn">MTN Packages</button>
                     <button class="tab" data-network="at">AirtelTigo Packages</button>
+                    <button class="tab" data-network="tc">Telecel Packages</button>
                 </div>
                 
                 <div class="card">
@@ -2271,7 +2272,7 @@ document.addEventListener('DOMContentLoaded', function() {
       this.classList.add('active');
       
       // Update title
-      const titleMap = { mtn: 'MTN Packages', at: 'AirtelTigo Packages' };
+      const titleMap = { mtn: 'MTN Packages', at: 'AirtelTigo Packages', tc: 'Telecel Packages' };
       document.getElementById('packagesTitle').textContent = titleMap[network] || 'Packages';
       
       // Load packages for selected network
@@ -2834,6 +2835,7 @@ function addPackage() {
       <select id="pkgNetwork" class="swal2-input">
         <option value="mtn">MTN</option>
         <option value="at">AirtelTigo</option>
+        <option value="tc">Telecel</option>
       </select>
       <input type="text" id="pkgId" placeholder="Package ID" class="swal2-input">
       <input type="text" id="pkgName" placeholder="Package Name" class="swal2-input">

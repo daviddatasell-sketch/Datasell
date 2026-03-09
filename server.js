@@ -4850,14 +4850,16 @@ app.get('/api/admin/packages', requireAdmin, async (req, res) => {
         ...pkg
       }));
     } else {
-      // Get all packages from both networks
+      // Get all packages from all networks
       const mtnSnapshot = await admin.database().ref('packages/mtn').once('value');
       const atSnapshot = await admin.database().ref('packages/at').once('value');
+      const tcSnapshot = await admin.database().ref('packages/tc').once('value');
       
       const mtnData = mtnSnapshot.val();
       const atData = atSnapshot.val();
+      const tcData = tcSnapshot.val();
       
-      console.log(`📦 Admin fetching all packages - MTN: ${mtnData ? Object.keys(mtnData).length : 0}, AT: ${atData ? Object.keys(atData).length : 0}`);
+      console.log(`📦 Admin fetching all packages - MTN: ${mtnData ? Object.keys(mtnData).length : 0}, AT: ${atData ? Object.keys(atData).length : 0}, TC: ${tcData ? Object.keys(tcData).length : 0}`);
       
       Object.entries(mtnData || {}).forEach(([id, pkg]) => {
         packages.push({
@@ -4871,6 +4873,14 @@ app.get('/api/admin/packages', requireAdmin, async (req, res) => {
         packages.push({
           id,
           network: 'at',
+          ...pkg
+        });
+      });
+
+      Object.entries(tcData || {}).forEach(([id, pkg]) => {
+        packages.push({
+          id,
+          network: 'tc',
           ...pkg
         });
       });
