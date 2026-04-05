@@ -896,43 +896,29 @@ body.dark-mode .bottom-nav a.active {
         function getStatusClass(status, timestamp) {
             const statusLower = status?.toLowerCase() || 'processing';
             
-            // Check 7-hour timer for processing orders
-            if (statusLower === 'processing' && timestamp) {
-                const currentTime = new Date().getTime();
-                const orderTime = new Date(timestamp).getTime();
-                const timeDiffMs = currentTime - orderTime;
-                const sevenHoursMs = 7 * 60 * 60 * 1000;
-                
-                // If 7+ hours have passed, show as delivered
-                if (timeDiffMs >= sevenHoursMs) {
-                    return 'delivered';
-                }
-            }
-            
             // Map webhook statuses to display classes
+            // Status is now updated via DataMart Webhooks (real-time) instead of 7-hour timer
             if (statusLower === 'success' || statusLower === 'delivered') return 'delivered';
             if (statusLower === 'accepted') return 'accepted';
             if (statusLower === 'processing') return 'processing';
             if (statusLower === 'failed') return 'failed';
+            if (statusLower === 'refunded') return 'refunded';
             return 'pending';
         }
 
         function getStatusDisplay(status, timestamp) {
             const statusLower = status?.toLowerCase() || 'processing';
             
-            // Check 7-hour timer for processing orders
-            if (statusLower === 'processing' && timestamp) {
-                const currentTime = new Date().getTime();
-                const orderTime = new Date(timestamp).getTime();
-                const timeDiffMs = currentTime - orderTime;
-                const sevenHoursMs = 7 * 60 * 60 * 1000;
-                
-                // If 7+ hours have passed, show as Delivered
-                if (timeDiffMs >= sevenHoursMs) {
-                    return 'Delivered';
-                }
-            }
+            // Status is updated via DataMart Webhooks (real-time)
+            // No longer uses 7-hour fallback timer
             
+            // Map webhook statuses to display text
+            if (statusLower === 'success' || statusLower === 'delivered') return 'Delivered';
+            if (statusLower === 'accepted') return 'Accepted';
+            if (statusLower === 'processing') return 'Processing';
+            if (statusLower === 'failed') return 'Failed';
+            if (statusLower === 'refunded') return 'Refunded';
+            return 'Pending';
             // Map webhook statuses to display text
             if (statusLower === 'success' || statusLower === 'delivered') return 'Delivered';
             if (statusLower === 'accepted') return 'Accepted';

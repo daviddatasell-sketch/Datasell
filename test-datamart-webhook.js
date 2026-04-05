@@ -71,19 +71,24 @@ async function testEndpointAccessibility() {
   });
 }
 
-// Test 2: Send test webhook without signature
+// Test 2: Send test webhook without signature (NEW PAYLOAD FORMAT)
 async function testWebhookWithoutSignature() {
-  console.log('📡 Test 2: Sending test webhook (no signature - should accept)...\n');
+  console.log('📡 Test 2: Sending test webhook (no signature - NEW FORMAT)...\n');
   
   const payload = {
     event: 'order.completed',
+    timestamp: new Date().toISOString(),
     data: {
-      transactionId: `TEST-${Date.now()}`,
-      orderId: 'ORD-TEST-001',
+      orderId: '60f1e5b3e6b39812345678',
+      orderReference: 'GN-TEST-001',
+      transactionId: `TRX-TEST-${Date.now()}`,
       phone: '0241234567',
       network: 'MTN',
-      capacity: '1',
-      status: 'completed'
+      capacity: 1,
+      price: 4.80,
+      status: 'completed',
+      createdAt: new Date(Date.now() - 60000).toISOString(),
+      updatedAt: new Date().toISOString()
     }
   };
   
@@ -93,19 +98,24 @@ async function testWebhookWithoutSignature() {
   return sendWebhook(payload, null);
 }
 
-// Test 3: Send test webhook with correct signature
+// Test 3: Send test webhook with correct signature (NEW FORMAT)
 async function testWebhookWithSignature() {
-  console.log('📡 Test 3: Sending test webhook (with HMAC-SHA256 signature)...\n');
+  console.log('📡 Test 3: Sending test webhook (with HMAC-SHA256 signature - NEW FORMAT)...\n');
   
   const payload = {
     event: 'order.completed',
+    timestamp: new Date().toISOString(),
     data: {
-      transactionId: `TEST-SIG-${Date.now()}`,
-      orderId: 'ORD-TEST-002',
+      orderId: '60f1e5b3e6b39812345678',
+      orderReference: 'GN-VALID-001',
+      transactionId: `TRX-VALID-${Date.now()}`,
       phone: '0241234567',
-      network: 'MTN',
-      capacity: '1',
-      status: 'completed'
+      network: 'YELLO',
+      capacity: 5,
+      price: 20.50,
+      status: 'completed',
+      createdAt: new Date(Date.now() - 120000).toISOString(),
+      updatedAt: new Date().toISOString()
     }
   };
   
@@ -122,19 +132,24 @@ async function testWebhookWithSignature() {
   return sendWebhook(payload, signature);
 }
 
-// Test 4: Send test webhook with invalid signature
+// Test 4: Send test webhook with invalid signature (NEW FORMAT)
 async function testWebhookWithInvalidSignature() {
-  console.log('📡 Test 4: Sending test webhook (with INVALID signature - should reject)...\n');
+  console.log('📡 Test 4: Sending test webhook (with INVALID signature - NEW FORMAT)...\n');
   
   const payload = {
     event: 'order.completed',
+    timestamp: new Date().toISOString(),
     data: {
-      transactionId: `TEST-INVALID-${Date.now()}`,
-      orderId: 'ORD-TEST-003',
+      orderId: '60f1e5b3e6b39812345678',
+      orderReference: 'GN-INVALID-001',
+      transactionId: `TRX-INVALID-${Date.now()}`,
       phone: '0241234567',
       network: 'MTN',
-      capacity: '1',
-      status: 'completed'
+      capacity: 1,
+      price: 4.80,
+      status: 'completed',
+      createdAt: new Date(Date.now() - 60000).toISOString(),
+      updatedAt: new Date().toISOString()
     }
   };
   
@@ -145,7 +160,6 @@ async function testWebhookWithInvalidSignature() {
   console.log();
   
   return sendWebhook(payload, invalidSignature);
-}
 
 // Helper: Send webhook request
 function sendWebhook(payload, signature) {
@@ -218,6 +232,8 @@ async function runAllTests() {
   results.push(await testWebhookWithoutSignature());
   results.push(await testWebhookWithSignature());
   results.push(await testWebhookWithInvalidSignature());
+  results.push(await testOrderFailedEvent());
+  results.push(await testOrderProcessingEvent());
   
   // Summary
   console.log('='.repeat(60));
@@ -229,14 +245,17 @@ async function runAllTests() {
   console.log(`  2. Webhook (No Signature):     ${results[1] ? '✅ PASS' : '❌ FAIL'}`);
   console.log(`  3. Webhook (Valid Signature):  ${results[2] ? '✅ PASS' : '❌ FAIL'}`);
   console.log(`  4. Webhook (Invalid Sig):      ${!results[3] ? '✅ PASS (Rejected)' : '❌ FAIL (Accepted)'}`);
+  console.log(`  5. Order Failed Event:         ${results[4] ? '✅ PASS' : '❌ FAIL'}`);
+  console.log(`  6. Order Processing Event:     ${results[5] ? '✅ PASS' : '❌ FAIL'}`);
   
-  const passed = results.filter(r => r).length;
-  console.log(`\n📈 Overall: ${passed}/3 tests passed\n`);
+  const passed = results.filter(r => r).length - 1; // Exclude invalid sig test
+  console.log(`\n📈 Critical Tests: ${passed}/5 tests passed\n`);
   
   if (results[0] && results[2]) {
     console.log('✅ WEBHOOK SYSTEM IS OPERATIONAL!');
     console.log('\n✨ Your Datamart webhooks should be working.');
-    console.log('   When Datamart sends notifications, orders will update automatically.\n');
+    console.log('   When Datamart sends notifications, orders will update automatically.');
+    console.log('   Real-time status updates are now active (no 7-hour timer)!\n');
   } else {
     console.log('❌ WEBHOOK SYSTEM HAS ISSUES');
     console.log('\n⚠️  Please check:');
@@ -247,6 +266,74 @@ async function runAllTests() {
   }
   
   console.log('='.repeat(60) + '\n');
+}
+
+// Test 5: Test order.failed event
+async function testOrderFailedEvent() {
+  console.log('📡 Test 5: Testing order.failed event (NEW FORMAT)...\n');
+  
+  const payload = {
+    event: 'order.failed',
+    timestamp: new Date().toISOString(),
+    data: {
+      orderId: '60f1e5b3e6b39812345999',
+      orderReference: 'GN-FAIL-001',
+      transactionId: `TRX-FAIL-${Date.now()}`,
+      phone: '0241234567',
+      network: 'MTN',
+      capacity: 1,
+      price: 4.80,
+      status: 'failed',
+      createdAt: new Date(Date.now() - 60000).toISOString(),
+      updatedAt: new Date().toISOString()
+    }
+  };
+  
+  const payloadStr = JSON.stringify(payload);
+  const signature = crypto
+    .createHmac('sha256', WEBHOOK_SECRET)
+    .update(payloadStr)
+    .digest('hex');
+  
+  console.log(`   📦 Event: order.failed`);
+  console.log(`   🔐 Signature: ${signature.substring(0, 20)}...`);
+  console.log();
+  
+  return sendWebhook(payload, signature);
+}
+
+// Test 6: Test order.processing event
+async function testOrderProcessingEvent() {
+  console.log('📡 Test 6: Testing order.processing event (NEW FORMAT)...\n');
+  
+  const payload = {
+    event: 'order.processing',
+    timestamp: new Date().toISOString(),
+    data: {
+      orderId: '60f1e5b3e6b39812345777',
+      orderReference: 'GN-PROC-001',
+      transactionId: `TRX-PROC-${Date.now()}`,
+      phone: '0241234567',
+      network: 'YELLO',
+      capacity: 5,
+      price: 20.50,
+      status: 'processing',
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString()
+    }
+  };
+  
+  const payloadStr = JSON.stringify(payload);
+  const signature = crypto
+    .createHmac('sha256', WEBHOOK_SECRET)
+    .update(payloadStr)
+    .digest('hex');
+  
+  console.log(`   📦 Event: order.processing`);
+  console.log(`   🔐 Signature: ${signature.substring(0, 20)}...`);
+  console.log();
+  
+  return sendWebhook(payload, signature);
 }
 
 // Run tests

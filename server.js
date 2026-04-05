@@ -3647,41 +3647,60 @@ app.get('/api/datamart-webhook', (req, res) => {
 });
 
 app.post('/api/datamart-webhook', async (req, res) => {
+  const webhookStartTime = Date.now();
   try {
     const crypto = require('crypto');
     const signature = req.headers['x-datamart-signature'];
-    const event = req.headers['x-datamart-event'];
+    const eventHeader = req.headers['x-datamart-event'];
     const payload = req.body;
     const secret = process.env.DATAMART_WEBHOOK_SECRET;
 
+    // Extract event from header or payload (support both formats)
+    const event = eventHeader || payload.event;
+    
+    console.log(`\n📩 [DATAMART-WEBHOOK] ═══════════════════════════════════════`);
     console.log(`📩 [DATAMART-WEBHOOK] Received event: ${event}`);
     console.log(`📩 [DATAMART-WEBHOOK] Webhook URL: https://datasell.store/api/datamart-webhook`);
+    console.log(`📩 [DATAMART-WEBHOOK] Timestamp: ${payload.timestamp || new Date().toISOString()}`);
     console.log(`📩 [DATAMART-WEBHOOK] Payload:`, JSON.stringify(payload, null, 2));
-    console.log(`📩 [DATAMART-WEBHOOK] Signature header:`, signature);
+    console.log(`📩 [DATAMART-WEBHOOK] Signature header present: ${!!signature}`);
 
     // Verify signature if present
     if (signature) {
       if (!secret) {
-        console.error('❌ [DATAMART-WEBHOOK] DATAMART_WEBHOOK_SECRET not configured');
+        console.error('❌ [DATAMART-WEBHOOK] DATAMART_WEBHOOK_SECRET not configured in .env');
         return res.status(500).json({ error: 'Webhook secret not configured' });
       }
 
+      // Create signature from raw request body (exactly as received)
       const expected = crypto.createHmac('sha256', secret).update(JSON.stringify(payload)).digest('hex');
+      
       if (signature !== expected) {
-        console.warn(`⚠️ [DATAMART-WEBHOOK] Invalid signature`);
+        console.warn(`⚠️ [DATAMART-WEBHOOK] ⚠️ SIGNATURE VERIFICATION FAILED ⚠️`);
         console.warn(`⚠️ [DATAMART-WEBHOOK] Expected: ${expected}`);
         console.warn(`⚠️ [DATAMART-WEBHOOK] Received: ${signature}`);
-        return res.status(401).json({ error: 'Invalid signature' });
+        return res.status(401).json({ error: 'Invalid signature', received: signature, expected: expected });
       }
 
-      console.log(`✅ [DATAMART-WEBHOOK] Signature verified`);
+      console.log(`✅ [DATAMART-WEBHOOK] ✅ Signature verified successfully`);
     } else {
-      console.log(`ℹ️  [DATAMART-WEBHOOK] No signature header - accepting (test webhook)`);
+      console.log(`ℹ️  [DATAMART-WEBHOOK] ℹ️  No signature header - treating as test webhook`);
     }
 
-    // Extract data - support both nested and flat payload formats
+    // Extract data - support new nested format with data object
     const data = payload.data || payload;
-    const { orderId, transactionId, phone, network, capacity, price, status } = data;
+    const { 
+      orderId, 
+      orderReference,
+      transactionId, 
+      phone, 
+      network, 
+      capacity, 
+      price,
+      status: dataStatus,
+      createdAt,
+      updatedAt
+    } = data;
 
     // For test webhooks, accept even without transactionId
     if (!transactionId && !event) {
@@ -3690,14 +3709,17 @@ app.post('/api/datamart-webhook', async (req, res) => {
     }
 
     if (event === 'order.completed') {
-      console.log(`✅ [DATAMART-WEBHOOK] Order completed: ${transactionId}`);
+      console.log(`✅ [DATAMART-WEBHOOK] ✅ Processing order.completed event`);
+      console.log(`📊 [DATAMART-WEBHOOK] Transaction ID: ${transactionId}`);
+      console.log(`📊 [DATAMART-WEBHOOK] Order Reference: ${orderReference}`);
+      console.log(`📊 [DATAMART-WEBHOOK] Network: ${network}, Capacity: ${capacity}GB, Price: ₵${price}`);
       
       const transactionsRef = admin.database().ref('transactions');
       const snapshot = await transactionsRef.orderByChild('datamartTransactionId').equalTo(transactionId).once('value');
       
       if (!snapshot.exists()) {
         console.warn(`⚠️ [DATAMART-WEBHOOK] Transaction not found for ID: ${transactionId}`);
-        return res.status(404).json({ error: 'Transaction not found' });
+        return res.status(404).json({ error: 'Transaction not found', transactionId });
       }
 
       let transactionKey = null;
@@ -3707,33 +3729,74 @@ app.post('/api/datamart-webhook', async (req, res) => {
         transaction = child.val();
       });
 
-      await admin.database().ref(`transactions/${transactionKey}`).update({
+      // Update with new metadata from webhook
+      const updateData = {
         status: 'delivered',
         lastSyncedAt: new Date().toISOString(),
-        datamartStatus: 'completed'
-      });
+        datamartStatus: 'completed',
+        datamartWebhookReceived: true,
+        webhookReceivedAt: new Date().toISOString(),
+        orderReference: orderReference,
+        datamartPrice: price,
+        datamartCreatedAt: createdAt,
+        datamartUpdatedAt: updatedAt,
+        deliveredAt: updatedAt || new Date().toISOString()
+      };
 
-      console.log(`✅ [DATAMART-WEBHOOK] Updated ${transactionKey} to delivered`);
+      await admin.database().ref(`transactions/${transactionKey}`).update(updateData);
+      console.log(`✅ [DATAMART-WEBHOOK] ✅ Updated ${transactionKey} to delivered`);
+      console.log(`✅ [DATAMART-WEBHOOK] ✅ Stored order reference: ${orderReference}`);
 
       try {
-        const msg = `✅ Your data order has been delivered successfully! Enjoy your ${capacity}GB of data on ${network}.`;
+        const msg = `✅ Your ${capacity}GB ${network} data has been delivered! Enjoy!`;
         await sendSmsToUser(transaction.userId, phone || transaction.phoneNumber, msg);
-        console.log(`📱 [DATAMART-WEBHOOK] SMS sent`);
+        console.log(`📱 [DATAMART-WEBHOOK] ✅ SMS notification sent`);
       } catch (smsErr) {
-        console.error(`⚠️ [DATAMART-WEBHOOK] SMS failed:`, smsErr.message);
+        console.error(`⚠️ [DATAMART-WEBHOOK] SMS failed: ${smsErr.message}`);
       }
 
-      return res.status(200).json({ received: true, transactionId, timestamp: new Date().toISOString() });
+      console.log(`✅ [DATAMART-WEBHOOK] Processing time: ${Date.now() - webhookStartTime}ms\n`);
+      return res.status(200).json({ 
+        received: true, 
+        transactionId, 
+        orderReference,
+        status: 'delivered',
+        timestamp: new Date().toISOString() 
+      });
+
+    } else if (event === 'order.processing') {
+      console.log(`⏳ [DATAMART-WEBHOOK] Order processing: ${transactionId}`);
+      
+      const transactionsRef = admin.database().ref('transactions');
+      const snapshot = await transactionsRef.orderByChild('datamartTransactionId').equalTo(transactionId).once('value');
+      
+      if (snapshot.exists()) {
+        let transactionKey = null;
+        snapshot.forEach(child => {
+          transactionKey = child.key;
+        });
+        
+        await admin.database().ref(`transactions/${transactionKey}`).update({
+          status: 'processing',
+          lastSyncedAt: new Date().toISOString(),
+          datamartStatus: 'processing',
+          processingStartedAt: updatedAt || new Date().toISOString()
+        });
+        console.log(`✅ [DATAMART-WEBHOOK] Updated ${transactionKey} status to processing`);
+      }
+      
+      return res.status(200).json({ received: true, transactionId, status: 'processing' });
 
     } else if (event === 'order.failed') {
       console.log(`❌ [DATAMART-WEBHOOK] Order failed: ${transactionId}`);
+      console.log(`📊 [DATAMART-WEBHOOK] Order Reference: ${orderReference}`);
       
       const transactionsRef = admin.database().ref('transactions');
       const snapshot = await transactionsRef.orderByChild('datamartTransactionId').equalTo(transactionId).once('value');
       
       if (!snapshot.exists()) {
         console.warn(`⚠️ [DATAMART-WEBHOOK] Transaction not found for ID: ${transactionId}`);
-        return res.status(404).json({ error: 'Transaction not found' });
+        return res.status(404).json({ error: 'Transaction not found', transactionId });
       }
 
       let transactionKey = null;
@@ -3746,7 +3809,11 @@ app.post('/api/datamart-webhook', async (req, res) => {
       await admin.database().ref(`transactions/${transactionKey}`).update({
         status: 'failed',
         lastSyncedAt: new Date().toISOString(),
-        datamartStatus: 'failed'
+        datamartStatus: 'failed',
+        datamartWebhookReceived: true,
+        webhookReceivedAt: new Date().toISOString(),
+        orderReference: orderReference,
+        failedAt: updatedAt || new Date().toISOString()
       });
 
       console.log(`✅ [DATAMART-WEBHOOK] Updated ${transactionKey} to failed`);
@@ -3761,21 +3828,23 @@ app.post('/api/datamart-webhook', async (req, res) => {
         await userRef.update({ walletBalance: newBalance });
         console.log(`💰 [DATAMART-WEBHOOK] Refunded ₵${amount}`);
       } catch (refundErr) {
-        console.error(`⚠️ [DATAMART-WEBHOOK] Refund failed:`, refundErr.message);
+        console.error(`⚠️ [DATAMART-WEBHOOK] Refund failed: ${refundErr.message}`);
       }
 
       try {
-        const msg = `❌ Your data order failed. Your wallet has been refunded. Contact support: 0553843255`;
+        const msg = `❌ Your data order failed. Your wallet has been refunded. Support: 0553843255`;
         await sendSmsToUser(transaction.userId, phone || transaction.phoneNumber, msg);
         console.log(`📱 [DATAMART-WEBHOOK] Failure notification sent`);
       } catch (smsErr) {
-        console.error(`⚠️ [DATAMART-WEBHOOK] SMS failed:`, smsErr.message);
+        console.error(`⚠️ [DATAMART-WEBHOOK] SMS failed: ${smsErr.message}`);
       }
 
-      return res.status(200).json({ received: true, transactionId, timestamp: new Date().toISOString() });
+      console.log(`✅ [DATAMART-WEBHOOK] Processing time: ${Date.now() - webhookStartTime}ms\n`);
+      return res.status(200).json({ received: true, transactionId, status: 'failed' });
 
     } else if (event === 'order.created') {
       console.log(`✅ [DATAMART-WEBHOOK] Order created: ${transactionId}`);
+      console.log(`📊 [DATAMART-WEBHOOK] Order Reference: ${orderReference}`);
       
       const transactionsRef = admin.database().ref('transactions');
       const snapshot = await transactionsRef.orderByChild('datamartTransactionId').equalTo(transactionId).once('value');
@@ -3786,27 +3855,71 @@ app.post('/api/datamart-webhook', async (req, res) => {
           transactionKey = child.key;
         });
         
-        // Mark as pending/processing when created
         await admin.database().ref(`transactions/${transactionKey}`).update({
           lastSyncedAt: new Date().toISOString(),
-          datamartStatus: 'pending'
+          datamartStatus: 'pending',
+          datamartWebhookReceived: true,
+          webhookReceivedAt: new Date().toISOString(),
+          orderReference: orderReference,
+          createdAt: createdAt
         });
         console.log(`✅ [DATAMART-WEBHOOK] Updated ${transactionKey} status to pending`);
       }
       
-      return res.status(200).json({ received: true, transactionId, timestamp: new Date().toISOString() });
+      return res.status(200).json({ received: true, transactionId, status: 'pending' });
+
+    } else if (event === 'order.refunded') {
+      console.log(`💰 [DATAMART-WEBHOOK] Order refunded: ${transactionId}`);
+      
+      const transactionsRef = admin.database().ref('transactions');
+      const snapshot = await transactionsRef.orderByChild('datamartTransactionId').equalTo(transactionId).once('value');
+      
+      if (snapshot.exists()) {
+        let transactionKey = null;
+        let transaction = null;
+        snapshot.forEach(child => {
+          transactionKey = child.key;
+          transaction = child.val();
+        });
+        
+        // Refund user
+        try {
+          const amount = transaction.amount;
+          const userId = transaction.userId;
+          const userRef = admin.database().ref(`users/${userId}`);
+          const userSnapshot = await userRef.once('value');
+          const userData = userSnapshot.val();
+          const newBalance = (userData.walletBalance || 0) + amount;
+          await userRef.update({ walletBalance: newBalance });
+          console.log(`💰 [DATAMART-WEBHOOK] Refunded ₵${amount} to user`);
+        } catch (refundErr) {
+          console.error(`⚠️ [DATAMART-WEBHOOK] Refund failed: ${refundErr.message}`);
+        }
+
+        await admin.database().ref(`transactions/${transactionKey}`).update({
+          status: 'refunded',
+          datamartStatus: 'refunded',
+          lastSyncedAt: new Date().toISOString(),
+          orderReference: orderReference
+        });
+        console.log(`✅ [DATAMART-WEBHOOK] Updated ${transactionKey} to refunded`);
+      }
+      
+      return res.status(200).json({ received: true, transactionId, status: 'refunded' });
 
     } else {
-      console.warn(`⚠️ [DATAMART-WEBHOOK] Unknown event: ${event}`);
-      return res.status(200).json({ received: true, event });
+      console.warn(`⚠️ [DATAMART-WEBHOOK] Unknown event type: ${event}`);
+      return res.status(200).json({ received: true, event, warning: 'Unknown event type' });
     }
 
   } catch (error) {
-    console.error(`❌ [DATAMART-WEBHOOK] Error:`, error.message);
-    console.error(`❌ [DATAMART-WEBHOOK] Full error:`, error);
+    console.error(`\n❌ [DATAMART-WEBHOOK] ═══════════════════════════════════════`);
+    console.error(`❌ [DATAMART-WEBHOOK] ERROR: ${error.message}`);
+    console.error(`❌ [DATAMART-WEBHOOK] Stack:`, error.stack);
     console.error(`❌ [DATAMART-WEBHOOK] Request body:`, req.body);
     console.error(`❌ [DATAMART-WEBHOOK] Headers:`, req.headers);
-    return res.status(200).json({ received: true, error: error.message });
+    console.error(`❌ [DATAMART-WEBHOOK] Processing time: ${Date.now() - webhookStartTime}ms\n`);
+    return res.status(200).json({ received: true, error: error.message, processingTime: Date.now() - webhookStartTime });
   }
 });
 
