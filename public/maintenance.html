@@ -1,0 +1,371 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>DataSell - Maintenance</title>
+    <meta name="robots" content="noindex, nofollow">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        html, body {
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            font-family: 'Poppins', 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        }
+
+        body {
+            background: linear-gradient(135deg, #ffffff 0%, #f5f5f5 100%);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            position: relative;
+        }
+
+        /* Animated background elements */
+        .bg-elements {
+            position: absolute;
+            width: 100%;
+            height: 100%;
+            top: 0;
+            left: 0;
+            z-index: 0;
+            overflow: hidden;
+        }
+
+        .blob {
+            position: absolute;
+            border-radius: 50%;
+            opacity: 0.08;
+            animation: float 8s ease-in-out infinite;
+        }
+
+        .blob-1 {
+            width: 300px;
+            height: 300px;
+            background: linear-gradient(135deg, #6c63ff, #a8a4ff);
+            top: -50px;
+            left: -50px;
+            animation-delay: 0s;
+        }
+
+        .blob-2 {
+            width: 250px;
+            height: 250px;
+            background: linear-gradient(135deg, #ff6584, #ffb3c1);
+            bottom: -50px;
+            right: -50px;
+            animation-delay: 2s;
+        }
+
+        .blob-3 {
+            width: 200px;
+            height: 200px;
+            background: linear-gradient(135deg, #00d4ff, #0099cc);
+            bottom: 100px;
+            left: 5%;
+            animation-delay: 4s;
+        }
+
+        @keyframes float {
+            0%, 100% {
+                transform: translateY(0px);
+            }
+            50% {
+                transform: translateY(-30px);
+            }
+        }
+
+        /* Glassmorphism container */
+        .container {
+            position: relative;
+            z-index: 10;
+            text-align: center;
+            padding: 40px;
+            max-width: 600px;
+            width: 90%;
+        }
+
+        .maintenance-card {
+            background: rgba(255, 255, 255, 0.7);
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            border-radius: 20px;
+            padding: 60px 40px;
+            box-shadow: 0 8px 32px 0 rgba(31, 38, 135, 0.08);
+            animation: slideUp 0.8s ease-out;
+        }
+
+        @keyframes slideUp {
+            from {
+                opacity: 0;
+                transform: translateY(30px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        .maintenance-icon {
+            font-size: 80px;
+            color: #6c63ff;
+            margin-bottom: 20px;
+            animation: pulse 2s ease-in-out infinite;
+        }
+
+        @keyframes pulse {
+            0%, 100% {
+                opacity: 1;
+                transform: scale(1);
+            }
+            50% {
+                opacity: 0.8;
+                transform: scale(1.05);
+            }
+        }
+
+        .maintenance-title {
+            font-size: 36px;
+            font-weight: 700;
+            color: #1a1a2e;
+            margin-bottom: 15px;
+            letter-spacing: -0.5px;
+        }
+
+        .maintenance-subtitle {
+            font-size: 18px;
+            color: #4a4a6a;
+            margin-bottom: 30px;
+            line-height: 1.6;
+            font-weight: 500;
+        }
+
+        .maintenance-message {
+            font-size: 14px;
+            color: #666;
+            line-height: 1.8;
+            margin-bottom: 20px;
+            background: rgba(108, 99, 255, 0.05);
+            border-left: 4px solid #6c63ff;
+            padding: 20px;
+            border-radius: 8px;
+            text-align: left;
+        }
+
+        .maintenance-message strong {
+            display: block;
+            color: #1a1a2e;
+            margin-bottom: 10px;
+        }
+
+        .contact-section {
+            margin-top: 35px;
+            padding-top: 25px;
+            border-top: 1px solid rgba(108, 99, 255, 0.1);
+        }
+
+        .contact-label {
+            font-size: 13px;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            color: #999;
+            margin-bottom: 8px;
+            font-weight: 600;
+        }
+
+        .contact-info {
+            font-size: 16px;
+            color: #6c63ff;
+            font-weight: 600;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 10px;
+            margin-bottom: 20px;
+        }
+
+        .contact-info i {
+            font-size: 18px;
+        }
+
+        .contact-link {
+            display: inline-block;
+            background: linear-gradient(135deg, #6c63ff, #8b82ff);
+            color: white;
+            text-decoration: none;
+            padding: 12px 30px;
+            border-radius: 25px;
+            font-size: 14px;
+            font-weight: 600;
+            transition: all 0.3s ease;
+            cursor: pointer;
+            border: none;
+        }
+
+        .contact-link:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 25px rgba(108, 99, 255, 0.3);
+        }
+
+        .status-indicator {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            background: rgba(255, 165, 0, 0.1);
+            border: 1px solid rgba(255, 165, 0, 0.3);
+            padding: 8px 16px;
+            border-radius: 20px;
+            font-size: 12px;
+            color: #ff9800;
+            font-weight: 600;
+            margin-top: 20px;
+        }
+
+        .status-dot {
+            width: 8px;
+            height: 8px;
+            background: #ff9800;
+            border-radius: 50%;
+            animation: blink 1.5s ease-in-out infinite;
+        }
+
+        @keyframes blink {
+            0%, 100% {
+                opacity: 1;
+            }
+            50% {
+                opacity: 0.4;
+            }
+        }
+
+        .footer-text {
+            font-size: 12px;
+            color: #999;
+            margin-top: 30px;
+            line-height: 1.6;
+        }
+
+        @media (max-width: 768px) {
+            .maintenance-card {
+                padding: 40px 25px;
+            }
+
+            .maintenance-title {
+                font-size: 28px;
+            }
+
+            .maintenance-subtitle {
+                font-size: 16px;
+            }
+
+            .maintenance-icon {
+                font-size: 60px;
+            }
+
+            .blob {
+                opacity: 0.04;
+            }
+
+            .blob-1 {
+                width: 200px;
+                height: 200px;
+            }
+
+            .blob-2 {
+                width: 150px;
+                height: 150px;
+            }
+
+            .blob-3 {
+                width: 120px;
+                height: 120px;
+            }
+        }
+
+        /* Prevent any interaction with elements behind the maintenance page */
+        .overlay-blocker {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: 1000;
+            background: transparent;
+            cursor: default;
+        }
+
+        /* Hide navigation or any attempt to bypass */
+        a {
+            pointer-events: auto;
+        }
+    </style>
+</head>
+<body>
+    <div class="overlay-blocker"></div>
+    
+    <div class="bg-elements">
+        <div class="blob blob-1"></div>
+        <div class="blob blob-2"></div>
+        <div class="blob blob-3"></div>
+    </div>
+
+    <div class="container">
+        <div class="maintenance-card">
+            <div class="maintenance-icon">
+                <i class="fas fa-tools"></i>
+            </div>
+
+            <h1 class="maintenance-title">Platform Under Maintenance</h1>
+            
+            <p class="maintenance-subtitle">We're Making Improvements</p>
+
+            <div class="maintenance-message">
+                <strong>🔧 Scheduled Maintenance</strong>
+                <p>PLATFORM IS CURRENTLY UNDER UPGRADE AND MAINTENANCE AND WILL BE RESTORED BACK SOON</p>
+            </div>
+
+            <div class="maintenance-message">
+                <strong>📧 Need Assistance?</strong>
+                <p>Kindly contact our support team for any queries or urgent matters.</p>
+            </div>
+
+            <div class="contact-section">
+                <p class="contact-label">📮 Contact Support</p>
+                <div class="contact-info">
+                    <i class="fas fa-envelope"></i>
+                    <a href="mailto:datasellgh@gmail.com" class="contact-link">datasellgh@gmail.com</a>
+                </div>
+            </div>
+
+            <div class="status-indicator">
+                <span class="status-dot"></span>
+                <span>Maintenance in Progress</span>
+            </div>
+
+            <p class="footer-text">
+                We appreciate your patience as we work to provide you with a better experience. 
+                Please check back shortly!
+            </p>
+        </div>
+    </div>
+
+    <script>
+        // Prevent any navigation attempts or back button functionality
+        history.pushState(null, null, location.href);
+        window.addEventListener('popstate', function () {
+            history.pushState(null, null, location.href);
+        });
+
+        // Log that maintenance page is active
+        console.log('%c⚠️ PLATFORM UNDER MAINTENANCE', 'color: #ff9800; font-size: 16px; font-weight: bold;');
+        console.log('%cPlease wait while we upgrade and maintain the platform.', 'color: #666; font-size: 12px;');
+    </script>
+</body>
+</html>
