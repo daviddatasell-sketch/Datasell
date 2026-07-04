@@ -1393,11 +1393,20 @@
                 </div>
                 
                 <div class="card">
-                    <div class="card-header">
-                        <h3 class="card-title" id="packagesTitle">MTN Packages</h3>
+                    <div class="card-header" style="display:flex; flex-wrap:wrap; align-items:center; justify-content:space-between; gap:0.75rem;">
+                        <div style="display:flex; align-items:center; gap:0.75rem; flex-wrap:wrap;">
+                            <h3 class="card-title" id="packagesTitle">MTN Packages</h3>
+                            <div id="networkStockControl" style="display:flex; align-items:center; gap:0.5rem;">
+                                <span id="networkStockLabel" style="font-weight:700; color:#2563eb;">Network status: <span id="networkStockValue">In Stock</span></span>
+                                <button class="btn btn-sm btn-outline-secondary" id="networkStockToggleBtn" type="button">Mark Out of Stock</button>
+                            </div>
+                        </div>
                         <button class="btn btn-primary" id="addPackageBtn">
                             <i class="fas fa-plus"></i> Add Package
                         </button>
+                    </div>
+                    <div id="networkStockBanner" style="display:none; margin:0.75rem 1rem 0; padding:0.75rem 1rem; border-radius:0.5rem; background:#fef3c7; color:#92400e; font-weight:600;">
+                        This network is currently out of stock. New purchases will be blocked until stock is restored.
                     </div>
                     <div class="table-container">
                         <table id="packagesTable">
@@ -2646,14 +2655,92 @@ async function processFunds() {
 }
 
 // Load Packages Function
-// Global variable to track current network filter
+// Global variables to track current network filter and stock status
 let currentPackageNetwork = 'mtn';
+let currentNetworkStock = { mtn: true, at: true, tc: true };
+
+async function loadNetworkStock(network) {
+  try {
+    const response = await fetch('/api/admin/network-stock', { credentials: 'include' });
+    const data = await response.json();
+    if (data.success && data.networkStock) {
+      currentNetworkStock = {
+        mtn: data.networkStock.mtn !== false,
+        at: data.networkStock.at !== false,
+        tc: data.networkStock.tc !== false
+      };
+      updateNetworkStockUI(network);
+      return currentNetworkStock[network];
+    }
+  } catch (error) {
+    console.error('❌ Error loading network stock:', error);
+  }
+
+  // Default to in-stock if network stock cannot be fetched
+  updateNetworkStockUI(network);
+  return true;
+}
+
+function updateNetworkStockUI(network) {
+  const inStock = currentNetworkStock[network] !== false;
+  const stockLabel = document.getElementById('networkStockValue');
+  const stockToggleBtn = document.getElementById('networkStockToggleBtn');
+  const stockControl = document.getElementById('networkStockControl');
+
+  if (stockLabel) {
+    stockLabel.textContent = inStock ? 'In Stock' : 'Out of Stock';
+    stockLabel.style.color = inStock ? '#10b981' : '#ef4444';
+  }
+
+  if (stockToggleBtn) {
+    stockToggleBtn.textContent = inStock ? 'Mark Out of Stock' : 'Mark In Stock';
+    stockToggleBtn.style.backgroundColor = inStock ? '#f3f4f6' : '#111827';
+    stockToggleBtn.style.color = inStock ? '#111827' : '#ffffff';
+    stockToggleBtn.onclick = () => toggleNetworkStock(network);
+  }
+
+  const stockBanner = document.getElementById('networkStockBanner');
+  if (stockBanner) {
+    stockBanner.style.display = inStock ? 'none' : 'block';
+  }
+
+  if (stockControl) {
+    stockControl.title = inStock ? 'This network is currently in stock.' : 'This network is currently out of stock. Purchases will be blocked for this network.';
+  }
+}
+
+async function toggleNetworkStock(network) {
+  try {
+    const inStock = currentNetworkStock[network] !== false;
+    const response = await fetch('/api/admin/network-stock/update', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',
+      body: JSON.stringify({ network, inStock: !inStock })
+    });
+    const data = await response.json();
+    if (!data.success) {
+      throw new Error(data.error || 'Failed to update network stock');
+    }
+    currentNetworkStock = {
+      mtn: data.networkStock.mtn !== false,
+      at: data.networkStock.at !== false,
+      tc: data.networkStock.tc !== false
+    };
+    updateNetworkStockUI(network);
+    Swal.fire('Success', `Network ${network.toUpperCase()} stock set to ${!inStock ? 'In Stock' : 'Out of Stock'}`, 'success');
+  } catch (error) {
+    console.error('❌ Error toggling network stock:', error);
+    Swal.fire('Error', 'Unable to update network stock. Please try again.', 'error');
+  }
+}
 
 async function loadPackages(network) {
   // Update current network if provided
   if (network) {
     currentPackageNetwork = network;
   }
+  await loadNetworkStock(currentPackageNetwork);
   
   try {
     console.log(`📦 Fetching packages for network: ${currentPackageNetwork}`);
