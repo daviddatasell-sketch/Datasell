@@ -755,9 +755,8 @@ const requireAdmin = (req, res, next) => {
 // ENHANCED PAGE ROUTES
 // ====================
 
-// MAINTENANCE MODE: Show maintenance page at root
 app.get('/', (req, res) => {
-  res.sendFile(path.join(__dirname, 'public', 'maintenance.html'));
+  res.sendFile(path.join(__dirname, 'public', 'home.html'));
 });
 
 app.get('/dashboard', requireAuth, (req, res) => {
@@ -770,17 +769,15 @@ app.get('/api-dashboard', requireAuth, (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'api-dashboard.html'));
 });
 
-// MAINTENANCE MODE: Allow admin login only
 app.get('/login', (req, res) => {
-  // Serve login page for everyone, but API will only allow admin
   res.sendFile(path.join(__dirname, 'public', 'login.html'));
 });
 
 app.get('/signup', (req, res) => {
-  return res.redirect('/maintenance');
+  res.sendFile(path.join(__dirname, 'public', 'signup.html'));
 });
 
-// Maintenance page route (temporary - serves maintenance.html directly)
+// Maintenance page route (still available if needed)
 app.get('/maintenance', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'maintenance.html'));
 });
@@ -923,83 +920,8 @@ async function generateUniqueReferralCode() {
   return code;
 }
 
-// MAINTENANCE MODE: Allow admin-only login
-app.post('/api/signup', (req, res) => {
-  return res.status(503).json({ 
-    success: false, 
-    error: 'PLATFORM IS CURRENTLY UNDER UPGRADE AND MAINTENANCE AND WILL BE RESTORED BACK SOON',
-    contact: 'datasellgh@gmail.com'
-  });
-});
-
-app.post('/api/login', async (req, res) => {
-  try {
-    let { email, password } = req.body;
-    
-    // Trim whitespace from credentials
-    email = email ? email.trim() : '';
-    password = password ? password.trim() : '';
-    
-    // Debug logging
-    const adminEmail = (process.env.ADMIN_EMAIL || '').trim();
-    const adminPassword = (process.env.ADMIN_PASSWORD || '').trim();
-    
-    console.log('🔐 LOGIN DEBUG INFO:');
-    console.log('   Received Email:', `"${email}"`, `(length: ${email.length})`);
-    console.log('   Received Password:', `"${password}"`, `(length: ${password.length})`);
-    console.log('   Expected Email:', `"${adminEmail}"`, `(length: ${adminEmail.length})`);
-    console.log('   Expected Password:', `"${adminPassword}"`, `(length: ${adminPassword.length})`);
-    console.log('   Email Match:', email === adminEmail);
-    console.log('   Password Match:', password === adminPassword);
-    
-    // ADMIN-ONLY LOGIN DURING MAINTENANCE
-    if (email === adminEmail && password === adminPassword) {
-      console.log('✅ 🔑 Admin login attempt - ALLOWED');
-      
-      // Create admin session
-      req.session.user = {
-        uid: 'admin_user',
-        email: email,
-        isAdmin: true
-      };
-      
-      console.log('✅ Admin session created');
-      
-      return res.json({ 
-        success: true, 
-        message: 'Admin login successful',
-        redirectUrl: '/dashboard'
-      });
-    }
-    
-    // All non-admin login attempts blocked during maintenance
-    console.log('❌ Non-admin login attempt blocked during maintenance:', email);
-    return res.status(503).json({ 
-      success: false, 
-      error: 'PLATFORM IS CURRENTLY UNDER UPGRADE AND MAINTENANCE AND WILL BE RESTORED BACK SOON',
-      contact: 'datasellgh@gmail.com'
-    });
-  } catch (error) {
-    console.error('Login error:', error);
-    return res.status(503).json({ 
-      success: false, 
-      error: 'PLATFORM IS CURRENTLY UNDER UPGRADE AND MAINTENANCE AND WILL BE RESTORED BACK SOON',
-      contact: 'datasellgh@gmail.com'
-    });
-  }
-});
-
-app.post('/api/google-login', (req, res) => {
-  return res.status(503).json({ 
-    success: false, 
-    error: 'PLATFORM IS CURRENTLY UNDER UPGRADE AND MAINTENANCE AND WILL BE RESTORED BACK SOON',
-    contact: 'datasellgh@gmail.com'
-  });
-});
-
 // Original signup handler (deactivated - commented out for reference)
-/*
-app.post('/api/signup-original', async (req, res) => {
+app.post('/api/signup', async (req, res) => {
   try {
     const { email, password, firstName, lastName, phone, acceptedTerms, referralCode } = req.body;
     
@@ -1169,7 +1091,7 @@ app.post('/api/signup-original', async (req, res) => {
       error: 'Failed to create account: ' + error.message 
     });
   }
-*/
+});
 
 // Check authentication status endpoint (used by login page to redirect if already logged in)
 app.get('/api/check-auth', (req, res) => {
@@ -1193,10 +1115,8 @@ app.get('/api/check-auth', (req, res) => {
     });
   }
 });
-
-// Enhanced User Login (DEACTIVATED - Under Maintenance)
-/*
-app.post('/api/login-DEACTIVATED', async (req, res) => {
+// Enhanced User Login
+app.post('/api/login', async (req, res) => {
   try {
     console.log('🔓 [LOGIN] Request received');
     console.log('🔓 [LOGIN] Body:', req.body);
@@ -1439,8 +1359,6 @@ app.post('/api/login-DEACTIVATED', async (req, res) => {
     });
   }
 });
-*/
-
 // Google Sign-In Authentication Endpoint (DEACTIVATED - Under Maintenance)
 /*
 app.post('/api/google-login-DEACTIVATED', async (req, res) => {
