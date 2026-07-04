@@ -1,5 +1,5 @@
 // DataHub Ghana API Integration Module
-// Handles AT (AirtelTigo) and Telecel packages
+// Handles AirtelTigo (AT) packages only; Telecel routing moved to DataMart
 // Documentation: https://app.datahubgh.com/docs/api
 
 const axios = require('axios');
@@ -11,9 +11,7 @@ const DATAHUB_CONFIG = {
   // Network mappings for DataHub
   NETWORKS: {
     'at': 'AT_PREMIUM',       // AirtelTigo Premium
-    'airteltigo': 'AT_PREMIUM',
-    'tc': 'TELECEL',          // Telecel
-    'telecel': 'TELECEL'
+    'airteltigo': 'AT_PREMIUM'
   },
   
   // Order statuses from DataHub
@@ -42,7 +40,8 @@ const DATAHUB_CONFIG = {
 function shouldUseDataHub(network) {
   if (!network) return false;
   const net = network.toLowerCase();
-  return net === 'at' || net === 'airteltigo' || net === 'tc' || net === 'telecel';
+  // Only route AirtelTigo to DataHub. Telecel was migrated to DataMart.
+  return net === 'at' || net === 'airteltigo';
 }
 
 /**
@@ -52,7 +51,9 @@ function shouldUseDataHub(network) {
  */
 function shouldUseDataMart(network) {
   if (!network) return false;
-  return network.toLowerCase() === 'mtn';
+  // Datamart handles MTN and Telecel (Telecel moved from DataHub)
+  const net = network.toLowerCase();
+  return net === 'mtn' || net === 'tc' || net === 'telecel';
 }
 
 /**

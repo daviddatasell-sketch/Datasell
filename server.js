@@ -267,6 +267,13 @@ let packageCache = {
   isInitialized: false
 };
 
+// Network stock cache (true = in stock, false = out of stock)
+let networkStock = {
+  mtn: true,
+  at: true,
+  tc: true
+};
+
 function initializePackageCache() {
   console.log('🔄 Initializing real-time package cache (non-blocking)...');
   
@@ -332,6 +339,20 @@ function initializePackageCache() {
         }
       }, (error) => {
         console.error('⚠️  Telecel packages listener warning:', error.message);
+      });
+
+      // Listen for network stock changes (system/networkStock)
+      const stockRef = admin.database().ref('system/networkStock');
+      stockRef.on('value', (snapshot) => {
+        try {
+          const val = snapshot.val() || {};
+          networkStock = Object.assign({ mtn: true, at: true, tc: true }, val);
+          console.log('✅ Network stock cache updated:', networkStock);
+        } catch (err) {
+          console.error('❌ Error updating network stock cache:', err);
+        }
+      }, (err) => {
+        console.error('⚠️ Network stock listener warning:', err.message);
       });
     } catch (error) {
       console.error('⚠️  Package cache initialization warning:', error.message);
@@ -4598,6 +4619,18 @@ app.post('/api/purchase-data', requireAuth, async (req, res) => {
 
     const reference = `DS-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
     
+    // Check network stock status and block purchases if out of stock
+    const netKey = (network || '').toLowerCase();
+    const inStock = (typeof networkStock[netKey] === 'boolean') ? networkStock[netKey] : true;
+    if (!inStock) {
+      console.log(`⛔ Purchase blocked: ${network} is OUT OF STOCK`);
+      return res.status(400).json({
+        success: false,
+        error: `${network.toUpperCase()} is currently out of stock. Please try again later.`,
+        isOutOfStock: true
+      });
+    }
+
     // Create order record first (without Order ID - will be allocated only if purchase succeeds)
     transactionRef = admin.database().ref('transactions').push();
     const transactionId = transactionRef.key; // Get the Firebase ID
@@ -5116,6 +5149,61 @@ app.post('/api/admin/packages/toggle-active', requireAdmin, async (req, res) => 
     });
   } catch (error) {
     console.error('Toggle package error:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// -----------------------------
+// Network Stock Management
+// -----------------------------
+
+// Get current network stock statuses
+app.get('/api/admin/network-stock', requireAdmin, async (req, res) => {
+  try {
+    // Return cached value if available
+    if (networkStock) {
+      return res.json({ success: true, networkStock });
+    }
+
+    const snap = await admin.database().ref('system/networkStock').once('value');
+    const val = snap.val() || { mtn: true, at: true, tc: true };
+    return res.json({ success: true, networkStock: val });
+  } catch (error) {
+    console.error('Get network stock error:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// Update a network's stock status (set inStock true/false)
+app.post('/api/admin/network-stock/update', requireAdmin, async (req, res) => {
+  try {
+    const { network, inStock } = req.body;
+    if (!network || typeof inStock !== 'boolean') {
+      return res.status(400).json({ success: false, error: 'network and inStock (boolean) are required' });
+    }
+
+    const netKey = network.toLowerCase();
+    await admin.database().ref(`system/networkStock/${netKey}`).set(inStock);
+
+    // Update local cache
+    networkStock[netKey] = inStock;
+
+    // Log admin action
+    const logRef = admin.database().ref('adminLogs').push();
+    await logRef.set({
+      adminId: req.session.user.uid,
+      action: 'update_network_stock',
+      target: netKey,
+      details: `Set ${netKey} inStock=${inStock}`,
+      timestamp: new Date().toISOString(),
+      ip: req.ip
+    });
+
+    console.log(`✅ Network stock updated by admin ${req.session.user.uid}: ${netKey} -> ${inStock}`);
+
+    res.json({ success: true, message: `Network ${netKey} stock set to ${inStock}`, networkStock });
+  } catch (error) {
+    console.error('Update network stock error:', error);
     res.status(500).json({ success: false, error: error.message });
   }
 });
