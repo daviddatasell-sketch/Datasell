@@ -102,6 +102,7 @@
     }
 
     .package-card {
+        position: relative;
         background: white;
         border-radius: 8px;
         padding: 0.75rem 0.5rem;
@@ -127,6 +128,43 @@
         border-color: var(--primary-color);
         background: rgba(108, 99, 255, 0.1);
         box-shadow: 0 4px 12px rgba(108, 99, 255, 0.2);
+    }
+
+    .package-card.disabled {
+        opacity: 0.5;
+        cursor: not-allowed;
+        border-color: #e5e7eb;
+        background: #f8fafc;
+        box-shadow: none;
+    }
+
+    .package-card.disabled .package-price,
+    .package-card.disabled .package-validity,
+    .package-card.disabled .package-gb {
+        color: #6b7280;
+    }
+
+    .package-card .out-of-stock-badge {
+        position: absolute;
+        top: 0.6rem;
+        right: 0.6rem;
+        background: #ef4444;
+        color: white;
+        font-size: 0.6rem;
+        font-weight: 700;
+        padding: 0.2rem 0.5rem;
+        border-radius: 999px;
+        text-transform: uppercase;
+        letter-spacing: 0.03em;
+        z-index: 2;
+    }
+
+    .package-card .package-badge-overlay {
+        position: absolute;
+        inset: 0;
+        background: rgba(255,255,255,0.65);
+        border-radius: 8px;
+        z-index: 1;
     }
 
     .package-gb {
@@ -867,6 +905,11 @@
                 </div>
             </div>
 
+            <!-- Network Stock Notice -->
+            <div id="networkStockNotice" class="alert alert-warning" style="display:none; margin-bottom: 1rem;">
+                <strong>Network status:</strong> This network is currently out of stock. Yello server is currently on hold and orders will be processed once resumed. Thank You.
+            </div>
+
             <!-- Wallet Info -->
             <div class="wallet-info">
                 <p class="wallet-label">Available Balance</p>
@@ -1130,6 +1173,8 @@
         }
 
         // Initialize network selection
+        let currentNetworkStock = true;
+
         function initializeNetwork() {
             if (networkParam && ['mtn', 'at', 'tc'].includes(networkParam)) {
                 selectedNetwork = networkParam;
@@ -1146,8 +1191,29 @@
             }
         }
 
+        async function loadNetworkStock() {
+            try {
+                const response = await fetch('/api/network-stock', { credentials: 'include' });
+                const result = await response.json();
+                if (result.success && result.networkStock) {
+                    currentNetworkStock = result.networkStock[selectedNetwork] !== false;
+                } else {
+                    currentNetworkStock = true;
+                }
+            } catch (error) {
+                console.error('Failed to load network stock:', error);
+                currentNetworkStock = true;
+            }
+
+            const notice = document.getElementById('networkStockNotice');
+            if (notice) {
+                notice.style.display = currentNetworkStock ? 'none' : 'block';
+            }
+        }
+
         // Load data packages
         async function loadPackages() {
+            await loadNetworkStock();
             try {
                 console.log(`📦 Loading packages for network: ${selectedNetwork}`);
                 const response = await fetch(`/api/packages/${selectedNetwork}`, { credentials: 'include' });
@@ -1226,9 +1292,13 @@
                 };
                 const networkLogo = networkLogoMap[selectedNetwork];
                 const networkLabel = networkLabelMap[selectedNetwork];
+                const disabledClass = currentNetworkStock ? '' : ' disabled';
+                const disabledClick = currentNetworkStock ? `openPhoneModal('${pkg.id}', '${pkg.name}', ${pkg.price})` : 'showNetworkOutOfStockMessage()';
+                const outOfStockBadge = currentNetworkStock ? '' : '<div class="out-of-stock-badge">Out of Stock</div>';
 
                 return `
-                <div class="package-card" onclick="openPhoneModal('${pkg.id}', '${pkg.name}', ${pkg.price})">
+                <div class="package-card${disabledClass}" onclick="${disabledClick}" aria-disabled="${!currentNetworkStock}">
+                    ${outOfStockBadge}
                     <div class="network-badge-small">
                         <img src="${networkLogo}" alt="${networkLabel}" />
                         <span>${networkLabel}</span>
@@ -1239,6 +1309,10 @@
                 </div>
                 `;
             }).join('');
+        }
+
+        function showNetworkOutOfStockMessage() {
+            notyf.error('This network is currently out of stock. Purchases are blocked until stock is restored.');
         }
 
         // Open phone modal when package is clicked
@@ -1266,6 +1340,12 @@
             // Find the package
             selectedPackage = packages.find(pkg => pkg.id === packageId);
             
+            await loadNetworkStock();
+            if (!currentNetworkStock) {
+                notyf.error('This network is currently out of stock. Please try again later.');
+                return;
+            }
+
             if (!selectedPackage) {
                 console.error('Package not found:', packageId);
                 return;
