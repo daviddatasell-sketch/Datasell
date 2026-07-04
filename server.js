@@ -5126,6 +5126,22 @@ app.post('/api/admin/network-stock/update', requireAdmin, async (req, res) => {
   }
 });
 
+// Public network stock status for purchase flow
+app.get('/api/network-stock', async (req, res) => {
+  try {
+    if (networkStock) {
+      return res.json({ success: true, networkStock });
+    }
+
+    const snap = await admin.database().ref('system/networkStock').once('value');
+    const val = snap.val() || { mtn: true, at: true, tc: true };
+    return res.json({ success: true, networkStock: val });
+  } catch (error) {
+    console.error('Get network stock error:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
 // Create a new package
 app.post('/api/admin/packages/create', requireAdmin, async (req, res) => {
   try {
